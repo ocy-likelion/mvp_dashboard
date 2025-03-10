@@ -13,12 +13,7 @@ logging.basicConfig(level=logging.ERROR)
 
 app = Flask(__name__, template_folder='templates')
 app.secret_key = 'your-secret-key'  # 실제 운영 환경에서는 안전한 난수를 사용하세요.
-CORS(app, resources={
-    r"/*": {
-        "origins": ["https://lion-helper-v2.vercel.app"],  # ✅ 프론트엔드 도메인만 허용
-        "supports_credentials": True
-    }
-})
+CORS(app, supports_credentials=True)  # ✅ CORS 설정 강화 (세션 쿠키 허용)
 
 app.config['SWAGGER'] = {
     'title': "업무 관리 대시보드 API",
