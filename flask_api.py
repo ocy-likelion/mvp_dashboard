@@ -35,12 +35,7 @@ def get_db_connection():
     
     conn = psycopg2.connect(DATABASE_URL)
     return conn
-
-# ✅ Flask 세션 설정 (세션 쿠키가 유지되도록 보장)
-app.config['SESSION_COOKIE_NAME'] = "session"  # 세션 쿠키 이름 지정
-app.config['SESSION_COOKIE_SECURE'] = False  # 🔥 개발 환경에서는 False, 운영 환경에서는 True (HTTPS 필요)
-app.config['SESSION_COOKIE_HTTPONLY'] = True  # ✅ JavaScript에서 접근 방지 (보안 강화)
-app.config['SESSION_COOKIE_SAMESITE'] = "None"  # ✅ CORS 환경에서 크로스 도메인 세션 유지 필요    
+    
 
 # ------------------- API 엔드포인트 문서화 시작 -------------------
 
@@ -132,7 +127,6 @@ def login():
 
         # ✅ 로그인 성공 시 세션에 사용자 정보 저장
         session['user'] = {"id": user[0], "username": username}
-        print("세션 저장됨:", session['user'])  # ✅ 디버깅 로그 추가
 
         # ✅ 응답에 username 포함
         return jsonify({
@@ -637,30 +631,17 @@ def get_tasks():
 @app.route('/tasks', methods=['POST'])
 def save_tasks():
     """
-    업무 체크리스트 저장 API (세션 기반)
-
-    ---
+    업무 체크리스트 저장 API (체크 여부와 관계없이 모든 데이터 저장)
+    --- 
     tags:
       - Tasks
-    summary: 업무 체크리스트 저장
-    description: 
-      로그인된 사용자만 업무 체크리스트의 완료 여부를 저장할 수 있습니다.  
-      요청 시 **세션 쿠키가 포함되어야 하며**, 그렇지 않으면 401 Unauthorized가 발생합니다.  
-      updates 배열에는 저장할 업무 체크리스트 항목이 포함되며, training_course는 업무 체크리스트가 속한 과정명을 의미합니다.
-
-    security:
-      - sessionAuth: []
-
     parameters:
       - in: body
         name: body
-        description: 저장할 체크리스트 데이터
+        description: 저장할 체크리스트 업데이트 데이터
         required: true
         schema:
           type: object
-          required:
-            - updates
-            - training_course
           properties:
             updates:
               type: array
@@ -672,61 +653,22 @@ def save_tasks():
                 properties:
                   task_name:
                     type: string
-                    example: "강사진 업무 현황 업데이트(내역 없을 시 Yes)"
                   is_checked:
                     type: boolean
-                    example: true
             training_course:
               type: string
-              example: "데이터 분석 4기"
-
     responses:
       201:
         description: 업무 체크리스트 저장 성공
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            message:
-              type: string
-              example: "Tasks saved successfully!"
       400:
-        description: 잘못된 요청 (필수 데이터 누락)
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            message:
-              type: string
-              example: "No data provided"
-      401:
-        description: 인증되지 않은 사용자 (로그인 필요)
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            message:
-              type: string
-              example: "로그인이 필요합니다."
+        description: 요청 데이터 없음
       500:
-        description: 서버 오류 발생
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            message:
-              type: string
-              example: "Failed to save tasks"
+        description: 업무 체크리스트 저장 실패
     """
-    # ✅ 로그인 여부 확인 추가
-    if 'user' not in session:
-        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
-
     try:
+        if 'user' not in session:
+            return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+        
         data = request.json
         updates = data.get("updates")
         training_course = data.get("training_course")
@@ -734,7 +676,7 @@ def save_tasks():
         if not updates or not training_course:
             return jsonify({"success": False, "message": "No data provided"}), 400
 
-        username = session['user']['username']  # ✅ 세션에서 사용자 정보 가져오기
+        username = session['user']['username']  # 로그인한 사용자 정보 가져오기
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -751,7 +693,7 @@ def save_tasks():
 
             task_id = task_item[0]
 
-            # ✅ 기존 데이터를 유지하면서 새로운 행을 INSERT (업데이트 없음)
+            # 사용자 이름과 함께 데이터 저장
             cursor.execute("""
                 INSERT INTO task_checklist (task_id, training_course, is_checked, checked_date, username)
                 VALUES (%s, %s, %s, NOW(), %s);
@@ -765,6 +707,7 @@ def save_tasks():
     except Exception as e:
         logging.error("Error saving tasks", exc_info=True)
         return jsonify({"success": False, "message": "Failed to save tasks"}), 500
+
 
 
 
