@@ -64,49 +64,6 @@ def healthcheck():
 # ✅ 로그인 API
 @app.route('/login', methods=['POST'])
 def login():
-    """
-    사용자 로그인 API (세션 기반)
-    ---
-    tags:
-      - Authentication
-    summary: 사용자 로그인 (세션 방식)
-    description: 사용자가 ID와 비밀번호를 입력하여 로그인합니다. 서버에서 세션을 생성하여 유지합니다.
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - username
-            - password
-          properties:
-            username:
-              type: string
-              example: "john_doe"
-            password:
-              type: string
-              example: "secure_password"
-    responses:
-      200:
-        description: 로그인 성공
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            message:
-              type: string
-            user:
-              type: object
-              properties:
-                id:
-                  type: integer
-                username:
-                  type: string
-      401:
-        description: 인증 실패 (잘못된 자격 증명)
-    """
     data = request.json
     username = data.get('username')
     password = data.get('password')
@@ -125,71 +82,26 @@ def login():
         if not user or user[1] != password:
             return jsonify({"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}), 401
 
-        # ✅ 로그인 성공 시 세션에 사용자 정보 저장
         session['user'] = {"id": user[0], "username": username}
-
-        # ✅ 응답에 username 포함
-        return jsonify({
-            "success": True,
-            "message": "로그인 성공!",
-            "user": session['user']  # ✅ username을 포함한 객체 반환
-        }), 200
+        return jsonify({"success": True, "message": "로그인 성공!"}), 200
 
     except Exception as e:
         logging.error("로그인 오류", exc_info=True)
         return jsonify({"success": False, "message": "서버 오류 발생"}), 500
 
 
-
 # ✅ 로그아웃 API
 @app.route('/logout', methods=['POST'])
 def logout():
-    """
-    로그아웃 API (세션 기반)
-    ---
-    tags:
-      - Authentication
-    summary: 사용자 로그아웃
-    description: 서버에서 세션을 제거하여 로그아웃합니다.
-    responses:
-      200:
-        description: 로그아웃 성공
-    """
-    session.pop('user', None)  # ✅ 세션 삭제
+    session.pop('user', None)
     return jsonify({"success": True, "message": "로그아웃 완료!"}), 200
 
 
 # ✅ 로그인 상태 확인 API
 @app.route('/me', methods=['GET'])
 def get_current_user():
-    """
-    현재 로그인한 사용자 정보 조회 API (세션 기반)
-    ---
-    tags:
-      - Authentication
-    summary: 로그인된 사용자 정보 조회
-    description: 세션을 통해 현재 로그인한 사용자의 정보를 반환합니다.
-    responses:
-      200:
-        description: 로그인된 사용자 정보 반환
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            user:
-              type: object
-              properties:
-                id:
-                  type: integer
-                username:
-                  type: string
-      401:
-        description: 인증되지 않은 사용자
-    """
     if 'user' not in session:
         return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
-    
     return jsonify({"success": True, "user": session['user']}), 200
 
 
@@ -628,11 +540,13 @@ def get_tasks():
         return jsonify({"success": False, "message": "Failed to retrieve tasks"}), 500
 
 
+    
+
 @app.route('/tasks', methods=['POST'])
 def save_tasks():
     """
     업무 체크리스트 저장 API (체크 여부와 관계없이 모든 데이터 저장)
-    --- 
+    ---
     tags:
       - Tasks
     parameters:
@@ -666,9 +580,6 @@ def save_tasks():
         description: 업무 체크리스트 저장 실패
     """
     try:
-        if 'user' not in session:
-            return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
-        
         data = request.json
         updates = data.get("updates")
         training_course = data.get("training_course")
@@ -676,14 +587,12 @@ def save_tasks():
         if not updates or not training_course:
             return jsonify({"success": False, "message": "No data provided"}), 400
 
-        username = session['user']['username']  # 로그인한 사용자 정보 가져오기
-
         conn = get_db_connection()
         cursor = conn.cursor()
 
         for update in updates:
             task_name = update.get("task_name")
-            is_checked = update.get("is_checked", False)
+            is_checked = update.get("is_checked", False)  # ✅ 체크 여부 기본값 False
 
             # task_id 찾기
             cursor.execute("SELECT id FROM task_items WHERE task_name = %s", (task_name,))
@@ -693,11 +602,11 @@ def save_tasks():
 
             task_id = task_item[0]
 
-            # 사용자 이름과 함께 데이터 저장
+            # ✅ 기존 데이터를 유지하면서 새로운 행을 INSERT (업데이트 없음)
             cursor.execute("""
-                INSERT INTO task_checklist (task_id, training_course, is_checked, checked_date, username)
-                VALUES (%s, %s, %s, NOW(), %s);
-            """, (task_id, training_course, is_checked, username))
+                INSERT INTO task_checklist (task_id, training_course, is_checked, checked_date)
+                VALUES (%s, %s, %s, NOW());
+            """, (task_id, training_course, is_checked))
 
         conn.commit()
         cursor.close()
@@ -707,7 +616,6 @@ def save_tasks():
     except Exception as e:
         logging.error("Error saving tasks", exc_info=True)
         return jsonify({"success": False, "message": "Failed to save tasks"}), 500
-
 
 
 
@@ -822,7 +730,7 @@ def save_issue():
 @app.route('/issues', methods=['GET'])
 def get_issues():
     """
-    해결되지 않은 이슈사항 목록 조회 API
+    해결되지 않은 이슈 목록 조회 API
     ---
     tags:
       - Issues
