@@ -127,6 +127,7 @@ def login():
 
         # ✅ 로그인 성공 시 세션에 사용자 정보 저장
         session['user'] = {"id": user[0], "username": username}
+        print("세션 저장됨:", session['user'])  # ✅ 디버깅 로그 추가
 
         # ✅ 응답에 username 포함
         return jsonify({
