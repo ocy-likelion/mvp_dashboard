@@ -1248,11 +1248,11 @@ def get_training_info():
 
 
 
-# ✅ 미체크 항목 저장
+# ✅ 미체크 항목의 설명 불러오기 (부서명 포함)
 @app.route('/unchecked_descriptions', methods=['GET'])
 def get_unchecked_descriptions():
     """
-    미체크 항목 설명 및 액션 플랜 조회 API (부서명 + task_period 포함)
+    미체크 항목 설명 및 액션 플랜 조회 API (부서명 포함)
 
     ---
     tags:
@@ -1260,7 +1260,7 @@ def get_unchecked_descriptions():
     summary: 미체크 항목 설명 및 액션 플랜 조회
     description:
       데이터베이스에서 해결되지 않은 미체크 항목 목록을 조회하여 반환합니다.
-      반환된 데이터에는 각 항목의 설명, 액션 플랜, 과정명, 부서명, 그리고 업무 기간(task_period)이 포함됩니다.
+      반환된 데이터에는 각 항목의 설명, 액션 플랜 및 과정명에 해당하는 부서명이 포함됩니다.
     responses:
       200:
         description: 미체크 항목 목록 조회 성공
@@ -1277,20 +1277,25 @@ def get_unchecked_descriptions():
                 properties:
                   id:
                     type: integer
+                    example: 1
                   content:
                     type: string
+                    example: "출석 체크 시스템 오류로 인해 확인 불가"
                   action_plan:
                     type: string
+                    example: "출석 체크 기능 복구 요청 및 대체 방안 검토"
                   training_course:
                     type: string
+                    example: "데이터 분석 스쿨 100기"
                   dept:
                     type: string
-                  task_period:
-                    type: string
+                    example: "TechSol"
                   created_at:
                     type: string
+                    example: "2025-02-12 10:30:00"
                   resolved:
                     type: boolean
+                    example: false
       500:
         description: 미체크 항목 목록 조회 실패
     """
@@ -1298,17 +1303,14 @@ def get_unchecked_descriptions():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # ✅ task_items 테이블을 추가 조인하여 task_period 가져오기
+        # ✅ training_info 테이블을 조인하여 dept 정보 포함
         cursor.execute('''
-            SELECT ud.id, ud.content, ud.action_plan, ud.training_course, 
-                   ti.dept, t.task_period, ud.created_at, ud.resolved
+            SELECT ud.id, ud.content, ud.action_plan, ud.training_course, ti.dept, ud.created_at, ud.resolved
             FROM unchecked_descriptions ud
             JOIN training_info ti ON ud.training_course = ti.training_course
-            LEFT JOIN task_items t ON ud.training_course = t.training_course  -- ✅ task_period 추가
             WHERE ud.resolved = FALSE  
             ORDER BY ud.created_at DESC;
         ''')
-
         unchecked_items = cursor.fetchall()
 
         cursor.close()
@@ -1323,15 +1325,86 @@ def get_unchecked_descriptions():
                     "action_plan": row[2],  # 액션 플랜
                     "training_course": row[3],
                     "dept": row[4],  # ✅ 부서명 추가
-                    "task_period": row[5],  # ✅ 업무 기간 추가
-                    "created_at": row[6],
-                    "resolved": row[7]
+                    "created_at": row[5],
+                    "resolved": row[6]
                 } for row in unchecked_items
             ]
         }), 200
     except Exception as e:
         logging.error("Error retrieving unchecked descriptions", exc_info=True)
         return jsonify({"success": False, "message": "미체크 항목 목록을 불러오는 중 오류 발생"}), 500
+
+
+
+# ✅ 미체크 항목 저장
+@app.route('/unchecked_descriptions', methods=['POST'])
+def save_unchecked_description():
+    """
+    미체크 항목 설명과 액션 플랜 저장 API
+
+    ---
+    tags:
+      - Unchecked Descriptions
+    summary: 미체크 항목 설명 및 액션 플랜 저장
+    description: 
+      사용자가 미체크 항목(설명)과 해당 액션 플랜을 입력하여 데이터베이스에 저장합니다.
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - description
+            - action_plan
+            - training_course
+          properties:
+            description:
+              type: string
+              example: "출석 체크 시스템 오류로 인해 확인 불가"
+            action_plan:
+              type: string
+              example: "출석 체크 기능 복구 요청 및 대체 방안 검토"
+            training_course:
+              type: string
+              example: "데이터 분석 스쿨 100기"
+    responses:
+      201:
+        description: 미체크 항목과 액션 플랜이 성공적으로 저장됨
+      400:
+        description: 필수 데이터 누락
+      500:
+        description: 서버 오류 발생
+    """
+    try:
+        if not request.is_json:
+            return jsonify({"success": False, "message": "Invalid JSON format"}), 400
+
+        data = request.get_json()
+        description = data.get("description", "").strip()
+        action_plan = data.get("action_plan", "").strip()
+        training_course = data.get("training_course", "").strip()
+
+        if not description or not action_plan or not training_course:
+            return jsonify({"success": False, "message": "설명, 액션 플랜, 훈련과정명을 모두 입력하세요."}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            INSERT INTO unchecked_descriptions (content, action_plan, training_course, created_at, resolved)
+            VALUES (%s, %s, %s, NOW(), FALSE)
+        ''', (description, action_plan, training_course))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "message": "미체크 항목과 액션 플랜이 저장되었습니다!"}), 201
+
+    except Exception as e:
+        logging.error("Error saving unchecked description", exc_info=True)
+        return jsonify({"success": False, "message": "서버 오류 발생"}), 500
 
 
 # ✅ 미체크 항목 댓글 저장
