@@ -639,8 +639,8 @@ def save_tasks():
     summary: 업무 체크리스트 저장
     description: 
       로그인된 사용자만 업무 체크리스트의 완료 여부를 저장할 수 있습니다.  
-      요청 시 **세션 쿠키가 포함되어야 하며**, 그렇지 않으면 `401 Unauthorized`가 발생합니다.  
-      `updates` 배열에는 저장할 업무 체크리스트 항목이 포함되며, `training_course`는 업무 체크리스트가 속한 과정명을 의미합니다.
+      요청 시 **세션 쿠키가 포함되어야 하며**, 그렇지 않으면 401 Unauthorized가 발생합니다.  
+      updates 배열에는 저장할 업무 체크리스트 항목이 포함되며, training_course는 업무 체크리스트가 속한 과정명을 의미합니다.
 
     security:
       - sessionAuth: []
