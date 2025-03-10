@@ -629,46 +629,107 @@ def get_tasks():
 
 
 @app.route('/tasks', methods=['POST'])
+@swag_from({
+    'tags': ['Tasks'],
+    'summary': '업무 체크리스트 저장',
+    'description': '업무 체크리스트의 완료 여부를 저장합니다. 로그인된 사용자만 접근할 수 있습니다.',
+    'security': [{'sessionAuth': []}],  # 세션 인증 사용
+    'parameters': [
+        {
+            'in': 'body',
+            'name': 'body',
+            'required': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'updates': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'properties': {
+                                'task_name': {
+                                    'type': 'string',
+                                    'example': '강사진 업무 현황 업데이트(내역 없을 시 Yes)'
+                                },
+                                'is_checked': {
+                                    'type': 'boolean',
+                                    'example': True
+                                }
+                            },
+                            'required': ['task_name', 'is_checked']
+                        }
+                    },
+                    'training_course': {
+                        'type': 'string',
+                        'example': '데이터 분석 4기'
+                    }
+                },
+                'required': ['updates', 'training_course']
+            }
+        }
+    ],
+    'responses': {
+        201: {
+            'description': '업무 체크리스트 저장 성공',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'success': {'type': 'boolean'},
+                    'message': {'type': 'string', 'example': 'Tasks saved successfully!'}
+                }
+            }
+        },
+        400: {
+            'description': '잘못된 요청 (필수 데이터 누락)',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'success': {'type': 'boolean'},
+                    'message': {'type': 'string', 'example': 'No data provided'}
+                }
+            }
+        },
+        401: {
+            'description': '인증되지 않은 사용자 (로그인 필요)',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'success': {'type': 'boolean'},
+                    'message': {'type': 'string', 'example': '로그인이 필요합니다.'}
+                }
+            }
+        },
+        500: {
+            'description': '서버 오류',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'success': {'type': 'boolean'},
+                    'message': {'type': 'string', 'example': 'Failed to save tasks'}
+                }
+            }
+        }
+    }
+})
 def save_tasks():
     """
-    업무 체크리스트 저장 API (체크 여부와 관계없이 모든 데이터 저장)
-    --- 
-    tags:
-      - Tasks
-    parameters:
-      - in: body
-        name: body
-        description: 저장할 체크리스트 업데이트 데이터
-        required: true
-        schema:
-          type: object
-          properties:
-            updates:
-              type: array
-              items:
-                type: object
-                required:
-                  - task_name
-                  - is_checked
-                properties:
-                  task_name:
-                    type: string
-                  is_checked:
-                    type: boolean
-            training_course:
-              type: string
-    responses:
-      201:
-        description: 업무 체크리스트 저장 성공
-      400:
-        description: 요청 데이터 없음
-      500:
-        description: 업무 체크리스트 저장 실패
+    업무 체크리스트 저장 API (세션 기반)
+    
+    - **로그인된 사용자만** 업무 체크리스트를 저장할 수 있습니다.
+    - `updates` 배열에는 저장할 업무 체크리스트 항목이 포함됩니다.
+    - `training_course`는 업무 체크리스트가 속한 과정명을 의미합니다.
+    - 요청 시 **세션 쿠키가 포함되어야 하며**, 그렇지 않으면 `401 Unauthorized`가 발생합니다.
+
+    Returns:
+        JSON 응답 객체:
+            - `success` (boolean): 요청 성공 여부
+            - `message` (string): 상태 메시지
     """
+    # ✅ 로그인 여부 확인 추가
+    if 'user' not in session:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
     try:
-        if 'user' not in session:
-            return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
-        
         data = request.json
         updates = data.get("updates")
         training_course = data.get("training_course")
@@ -676,7 +737,7 @@ def save_tasks():
         if not updates or not training_course:
             return jsonify({"success": False, "message": "No data provided"}), 400
 
-        username = session['user']['username']  # 로그인한 사용자 정보 가져오기
+        username = session['user']['username']  # ✅ 세션에서 사용자 정보 가져오기
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -693,7 +754,7 @@ def save_tasks():
 
             task_id = task_item[0]
 
-            # 사용자 이름과 함께 데이터 저장
+            # ✅ 기존 데이터를 유지하면서 새로운 행을 INSERT (업데이트 없음)
             cursor.execute("""
                 INSERT INTO task_checklist (task_id, training_course, is_checked, checked_date, username)
                 VALUES (%s, %s, %s, NOW(), %s);
@@ -707,7 +768,6 @@ def save_tasks():
     except Exception as e:
         logging.error("Error saving tasks", exc_info=True)
         return jsonify({"success": False, "message": "Failed to save tasks"}), 500
-
 
 
 
