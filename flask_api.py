@@ -35,7 +35,12 @@ def get_db_connection():
     
     conn = psycopg2.connect(DATABASE_URL)
     return conn
-    
+
+# ✅ Flask 세션 설정 (세션 쿠키가 유지되도록 보장)
+app.config['SESSION_COOKIE_NAME'] = "session"  # 세션 쿠키 이름 지정
+app.config['SESSION_COOKIE_SECURE'] = False  # 🔥 개발 환경에서는 False, 운영 환경에서는 True (HTTPS 필요)
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # ✅ JavaScript에서 접근 방지 (보안 강화)
+app.config['SESSION_COOKIE_SAMESITE'] = "None"  # ✅ CORS 환경에서 크로스 도메인 세션 유지 필요    
 
 # ------------------- API 엔드포인트 문서화 시작 -------------------
 
