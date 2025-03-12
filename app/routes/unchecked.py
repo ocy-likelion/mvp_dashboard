@@ -67,59 +67,29 @@ def save_unchecked_description():
         description = data.get("description", "").strip()
         action_plan = data.get("action_plan", "").strip()
         training_course = data.get("training_course", "").strip()
+        task_checklist_id = data.get("task_checklist_id")
 
-        if not description or not action_plan or not training_course:
-            return jsonify({"success": False, "message": "설명, 액션 플랜, 훈련과정명을 모두 입력하세요."}), 400
+        if not description or not action_plan or not training_course or not task_checklist_id:
+            return jsonify({"success": False, "message": "필수 항목이 누락되었습니다."}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        try:
-            # 트랜잭션 시작
-            cursor.execute("BEGIN")
+        cursor.execute('''
+            INSERT INTO unchecked_descriptions 
+            (content, action_plan, training_course, created_at, resolved, id_task)
+            VALUES (%s, %s, %s, NOW(), FALSE, %s)
+        ''', (description, action_plan, training_course, task_checklist_id))
 
-            # task_checklist에서 해당하는 id 찾기
-            cursor.execute("""
-                SELECT tc.id 
-                FROM task_checklist tc
-                JOIN task_items ti ON tc.task_id = ti.id
-                WHERE ti.task_name = %s 
-                AND tc.training_course = %s
-                AND DATE(tc.checked_date) = CURRENT_DATE
-                AND tc.is_checked = FALSE
-            """, (description, training_course))
-            
-            task_checklist = cursor.fetchone()
-            
-            if not task_checklist:
-                cursor.execute("ROLLBACK")
-                return jsonify({"success": False, "message": "해당하는 미체크 항목을 찾을 수 없습니다."}), 404
+        conn.commit()
+        cursor.close()
+        conn.close()
 
-            task_checklist_id = task_checklist[0]
-
-            # unchecked_descriptions에 저장
-            cursor.execute('''
-                INSERT INTO unchecked_descriptions 
-                (content, action_plan, training_course, created_at, resolved, id_task)
-                VALUES (%s, %s, %s, NOW(), FALSE, %s)
-            ''', (description, action_plan, training_course, task_checklist_id))
-
-            # 트랜잭션 커밋
-            cursor.execute("COMMIT")
-
-            return jsonify({"success": True, "message": "미체크 항목과 액션 플랜이 저장되었습니다!"}), 201
-
-        except Exception as e:
-            cursor.execute("ROLLBACK")
-            raise e
+        return jsonify({"success": True, "message": "미체크 항목과 액션 플랜이 저장되었습니다!"}), 201
 
     except Exception as e:
         logging.error("Error saving unchecked description", exc_info=True)
         return jsonify({"success": False, "message": "서버 오류 발생"}), 500
-    
-    finally:
-        cursor.close()
-        conn.close()
 
 @bp.route('/unchecked_comments', methods=['POST'])
 def add_unchecked_comment():
