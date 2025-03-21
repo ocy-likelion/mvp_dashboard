@@ -540,12 +540,10 @@ def get_tasks():
         return jsonify({"success": False, "message": "Failed to retrieve tasks"}), 500
 
 
-    
-
 @app.route('/tasks', methods=['POST'])
 def save_tasks():
     """
-    업무 체크리스트 저장 API (체크 여부와 관계없이 모든 데이터 저장)
+    업무 체크리스트 저장 API (동일 날짜 데이터는 업데이트)
     ---
     tags:
       - Tasks
@@ -573,7 +571,7 @@ def save_tasks():
               type: string
     responses:
       201:
-        description: 업무 체크리스트 저장 성공
+        description: 업무 체크리스트 저장/업데이트 성공
       400:
         description: 요청 데이터 없음
       500:
@@ -585,38 +583,193 @@ def save_tasks():
         training_course = data.get("training_course")
 
         if not updates or not training_course:
-            return jsonify({"success": False, "message": "No data provided"}), 400
+            return jsonify({"success": False, "message": "데이터가 제공되지 않았습니다."}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # 현재 날짜 가져오기 (시간 제외)
+        current_date = datetime.now().date()
+
         for update in updates:
             task_name = update.get("task_name")
-            is_checked = update.get("is_checked", False)  # ✅ 체크 여부 기본값 False
+            is_checked = update.get("is_checked", False)
 
             # task_id 찾기
             cursor.execute("SELECT id FROM task_items WHERE task_name = %s", (task_name,))
             task_item = cursor.fetchone()
             if not task_item:
-                return jsonify({"success": False, "message": f"Task '{task_name}' does not exist"}), 400
-
+                continue
             task_id = task_item[0]
 
-            # ✅ 기존 데이터를 유지하면서 새로운 행을 INSERT (업데이트 없음)
+            # 동일 날짜의 기존 데이터 확인 (DATE 함수 사용하여 시간 제외)
             cursor.execute("""
-                INSERT INTO task_checklist (task_id, training_course, is_checked, checked_date)
-                VALUES (%s, %s, %s, NOW());
-            """, (task_id, training_course, is_checked))
+                SELECT id 
+                FROM task_checklist 
+                WHERE task_id = %s 
+                AND training_course = %s 
+                AND DATE(checked_date)::date = %s::date
+            """, (task_id, training_course, current_date))
+            
+            existing_record = cursor.fetchone()
+
+            if existing_record:
+                # 기존 데이터가 있으면 업데이트
+                cursor.execute("""
+                    UPDATE task_checklist 
+                    SET is_checked = %s, checked_date = NOW()
+                    WHERE id = %s
+                """, (is_checked, existing_record[0]))
+            else:
+                # 기존 데이터가 없으면 새로 삽입
+                cursor.execute("""
+                    INSERT INTO task_checklist (task_id, training_course, is_checked, checked_date)
+                    VALUES (%s, %s, %s, NOW())
+                """, (task_id, training_course, is_checked))
 
         conn.commit()
         cursor.close()
         conn.close()
 
-        return jsonify({"success": True, "message": "Tasks saved successfully!"}), 201
-    except Exception as e:
-        logging.error("Error saving tasks", exc_info=True)
-        return jsonify({"success": False, "message": "Failed to save tasks"}), 500
+        return jsonify({
+            "success": True, 
+            "message": "체크리스트가 성공적으로 저장/업데이트되었습니다!"
+        }), 201
 
+    except Exception as e:
+        logging.error("체크리스트 저장 중 오류 발생", exc_info=True)
+        return jsonify({
+            "success": False, 
+            "message": "체크리스트 저장 실패"
+        }), 500
+
+
+@app.route('/tasks/update', methods=['PUT'])
+def update_tasks():
+    """
+    당일 업무 체크리스트 업데이트 API
+    ---
+    tags:
+      - Tasks
+    summary: "당일 저장된 체크리스트를 업데이트합니다."
+    parameters:
+      - in: body
+        name: body
+        description: 업데이트할 체크리스트 데이터
+        required: true
+        schema:
+          type: object
+          properties:
+            updates:
+              type: array
+              items:
+                type: object
+                required:
+                  - task_name
+                  - is_checked
+                properties:
+                  task_name:
+                    type: string
+                    example: "출석 체크"
+                  is_checked:
+                    type: boolean
+                    example: true
+            training_course:
+              type: string
+              example: "데이터 분석 스쿨 4기"
+    responses:
+      200:
+        description: 체크리스트 업데이트 성공
+      404:
+        description: 업데이트할 체크리스트가 존재하지 않음
+      500:
+        description: 업데이트 실패
+    """
+    try:
+        data = request.json
+        updates = data.get("updates")
+        training_course = data.get("training_course")
+        
+        # 현재 날짜만 사용 (시간 제외)
+        today = datetime.now().date()
+
+        if not updates or not training_course:
+            return jsonify({
+                "success": False, 
+                "message": "업데이트할 데이터와 훈련 과정명이 필요합니다."
+            }), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        updated_count = 0
+        not_found_items = []
+
+        for update in updates:
+            task_name = update.get("task_name")
+            is_checked = update.get("is_checked", False)
+
+            # task_id 찾기
+            cursor.execute("SELECT id FROM task_items WHERE task_name = %s", (task_name,))
+            task_item = cursor.fetchone()
+            if not task_item:
+                not_found_items.append(task_name)
+                continue
+                
+            task_id = task_item[0]
+
+            # 당일 날짜의 기존 데이터 확인
+            cursor.execute("""
+                SELECT id 
+                FROM task_checklist 
+                WHERE task_id = %s 
+                AND training_course = %s 
+                AND DATE(checked_date)::date = %s::date
+            """, (task_id, training_course, today))
+            
+            existing_record = cursor.fetchone()
+
+            if existing_record:
+                # 기존 데이터가 있으면 업데이트
+                cursor.execute("""
+                    UPDATE task_checklist 
+                    SET is_checked = %s, checked_date = NOW()
+                    WHERE id = %s
+                """, (is_checked, existing_record[0]))
+                updated_count += 1
+            else:
+                # 업데이트할 데이터가 없음
+                not_found_items.append(task_name)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        if updated_count == 0:
+            return jsonify({
+                "success": False,
+                "message": "당일 저장된 체크리스트가 없어 업데이트할 수 없습니다.",
+                "not_found_items": not_found_items
+            }), 404
+
+        response = {
+            "success": True,
+            "message": "체크리스트가 성공적으로 업데이트되었습니다!",
+            "updated_count": updated_count
+        }
+        
+        if not_found_items:
+            response["warning"] = "일부 항목은 당일 저장된 데이터가 없어 업데이트되지 않았습니다."
+            response["not_found_items"] = not_found_items
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        logging.error("체크리스트 업데이트 중 오류 발생", exc_info=True)
+        return jsonify({
+            "success": False,
+            "message": "체크리스트 업데이트 실패"
+        }), 500
 
 
 @app.route('/remarks', methods=['POST'])
@@ -772,7 +925,7 @@ def get_issues():
                 'id', i.id, 
                 'content', i.content, 
                 'date', i.date, 
-                'created_at', i.created_at, 
+                'created_at', i.created_at,
                 'resolved', i.resolved,
                 'comments', (
                     SELECT json_agg(json_build_object(
@@ -817,6 +970,9 @@ def add_issue_comment():
         required: true
         schema:
           type: object
+          required:
+            - issue_id
+            - comment
           properties:
             issue_id:
               type: integer
@@ -830,7 +986,7 @@ def add_issue_comment():
       400:
         description: 요청 데이터 오류
       500:
-        description: 서버 오류
+        description: 서버 오류 발생
     """
     try:
         data = request.json
@@ -1335,7 +1491,6 @@ def get_unchecked_descriptions():
         return jsonify({"success": False, "message": "미체크 항목 목록을 불러오는 중 오류 발생"}), 500
 
 
-
 # ✅ 미체크 항목 저장
 @app.route('/unchecked_descriptions', methods=['POST'])
 def save_unchecked_description():
@@ -1694,12 +1849,12 @@ def get_overall_task_status():
 @app.route('/admin/task_status_combined', methods=['GET'])
 def get_combined_task_status():
     """
-    훈련 과정별 업무 체크리스트의 체크율(당일 및 전체)을 조회하는 API
+    훈련 과정별 업무 체크리스트의 체크율(당일, 전날, 전체)을 조회하는 API
     --- 
     tags:
       - Admin
     summary: "훈련 과정별 업무 체크율 조회"
-    description: "각 훈련 과정별로 담당자, 당일 체크율과 전체 체크율을 조회합니다."
+    description: "각 훈련 과정별로 담당자, 당일 체크율, 전날 체크율, 전체 체크율을 조회합니다."
     responses:
       200:
         description: 훈련 과정별 체크율 데이터 반환
@@ -1721,6 +1876,8 @@ def get_combined_task_status():
                     type: string
                   daily_check_rate:
                     type: string
+                  yesterday_check_rate:
+                    type: string
                   overall_check_rate:
                     type: string
       500:
@@ -1730,16 +1887,19 @@ def get_combined_task_status():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # ✅ 담당자 정보(manager_name) 추가
         cursor.execute('''
             SELECT 
                 tc.training_course, 
                 ti.dept,
-                ti.manager_name,  -- ✅ 담당자명 추가
+                ti.manager_name,
                 COUNT(*) AS total_tasks,
                 SUM(CASE WHEN tc.is_checked THEN 1 ELSE 0 END) AS checked_tasks,
+                -- 당일 체크 데이터
                 SUM(CASE WHEN tc.is_checked AND DATE(tc.checked_date) = CURRENT_DATE THEN 1 ELSE 0 END) AS daily_checked_tasks,
-                COUNT(CASE WHEN DATE(tc.checked_date) = CURRENT_DATE THEN 1 ELSE NULL END) AS daily_total_tasks
+                COUNT(CASE WHEN DATE(tc.checked_date) = CURRENT_DATE THEN 1 ELSE NULL END) AS daily_total_tasks,
+                -- 전날 체크 데이터
+                SUM(CASE WHEN tc.is_checked AND DATE(tc.checked_date) = CURRENT_DATE - INTERVAL '1 day' THEN 1 ELSE 0 END) AS yesterday_checked_tasks,
+                COUNT(CASE WHEN DATE(tc.checked_date) = CURRENT_DATE - INTERVAL '1 day' THEN 1 ELSE NULL END) AS yesterday_total_tasks
             FROM task_checklist tc
             JOIN training_info ti ON tc.training_course = ti.training_course
             GROUP BY tc.training_course, ti.dept, ti.manager_name
@@ -1753,23 +1913,28 @@ def get_combined_task_status():
         for row in results:
             training_course = row[0]
             dept = row[1]
-            manager_name = row[2] if row[2] else "담당자 없음"  # NULL 처리
+            manager_name = row[2] if row[2] else "담당자 없음"
             total_tasks = row[3]
             checked_tasks = row[4] if row[4] else 0
             daily_checked_tasks = row[5] if row[5] else 0
             daily_total_tasks = row[6] if row[6] else 0
+            yesterday_checked_tasks = row[7] if row[7] else 0
+            yesterday_total_tasks = row[8] if row[8] else 0
 
-            # ✅ 전체 체크율 계산
+            # 전체 체크율 계산
             overall_check_rate = round((checked_tasks / total_tasks) * 100, 2) if total_tasks > 0 else 0
-            # ✅ 당일 체크율 계산
+            # 당일 체크율 계산
             daily_check_rate = round((daily_checked_tasks / daily_total_tasks) * 100, 2) if daily_total_tasks > 0 else 0
+            # 전날 체크율 계산
+            yesterday_check_rate = round((yesterday_checked_tasks / yesterday_total_tasks) * 100, 2) if yesterday_total_tasks > 0 else 0
 
             task_status.append({
                 "training_course": training_course,
                 "dept": dept,
-                "manager_name": manager_name,  # ✅ 담당자명 추가
-                "daily_check_rate": f"{daily_check_rate}%",  # 당일 체크율
-                "overall_check_rate": f"{overall_check_rate}%"  # 전체 체크율
+                "manager_name": manager_name,
+                "daily_check_rate": f"{daily_check_rate}%",
+                "yesterday_check_rate": f"{yesterday_check_rate}%",
+                "overall_check_rate": f"{overall_check_rate}%"
             })
 
         return jsonify({"success": True, "data": task_status}), 200
@@ -1781,6 +1946,23 @@ def get_combined_task_status():
 
 # ------------------- API 엔드포인트 문서화 끝 -------------------
  
+@app.route('/', methods=['GET'])
+def index():
+    """
+    서버 상태 확인용 루트 경로
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: 서버가 정상적으로 실행 중임
+    """
+    return jsonify({
+        "status": "ok",
+        "message": "API 서버가 정상적으로 실행 중입니다.",
+        "version": "1.0.0"
+    }), 200
+
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 10000))  # 기본값을 10000으로 설정
     app.run(host="0.0.0.0", port=port)
