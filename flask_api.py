@@ -1301,6 +1301,7 @@ def save_training_info():
             - start_date
             - end_date
             - dept
+            - manager_name
           properties:
             training_course:
               type: string
@@ -1316,6 +1317,9 @@ def save_training_info():
             dept:
               type: string
               example: "TechSol"
+            manager_name:
+              type: string
+              example: "홍길동"
     responses:
       201:
         description: 훈련 과정 저장 성공
@@ -1330,17 +1334,18 @@ def save_training_info():
         start_date = data.get("start_date", "").strip()
         end_date = data.get("end_date", "").strip()
         dept = data.get("dept", "").strip()
+        manager_name = data.get("manager_name", "").strip()
 
-        if not training_course or not start_date or not end_date or not dept:
+        if not training_course or not start_date or not end_date or not dept or not manager_name:
             return jsonify({"success": False, "message": "모든 필드를 입력하세요."}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
         cursor.execute('''
-            INSERT INTO training_info (training_course, start_date, end_date, dept)
-            VALUES (%s, %s, %s, %s)
-        ''', (training_course, start_date, end_date, dept))
+            INSERT INTO training_info (training_course, start_date, end_date, dept, manager_name)
+            VALUES (%s, %s, %s, %s, %s)
+        ''', (training_course, start_date, end_date, dept, manager_name))
 
         conn.commit()
         cursor.close()
@@ -1602,7 +1607,7 @@ def add_unchecked_comment():
         comment = data.get('comment')
 
         if not unchecked_id or not comment:
-            return jsonify({"success": False, "message": "미체크 항목 ID와 댓글을 입력하세요."}), 400
+            return jsonify({"success": False, "message": "미체크 항목 ID와 댓글 내용을 입력하세요."}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
