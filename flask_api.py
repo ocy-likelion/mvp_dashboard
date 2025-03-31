@@ -18,7 +18,7 @@ CORS(app, supports_credentials=True)  # ✅ CORS 설정 강화 (세션 쿠키 �
 app.config['SWAGGER'] = {
     'title': "업무 관리 대시보드 API",
     'uiversion': 3,  # 최신 Swagger UI 사용
-    'specs_route': "/apidocs/"  # Swagger UI 접근 경로 설정
+    'specs_route': "/apidocs"  # ✅ 끝의 슬래시(/) 제거
 }
 swagger = Swagger(app)  # Flasgger 초기화
 
