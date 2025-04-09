@@ -95,6 +95,16 @@ def add_notice():
 
         if not title or not content or not created_by:
             return jsonify({"success": False, "message": "제목, 내용, 작성자를 모두 입력하세요."}), 400
+        
+        # 허용된 사용자 목록
+        allowed_users = ["김은지", "장지연"]  # 이 두 사용자만 공지사항을 작성할 수 있음
+        
+        # 현재 사용자가 허용된 사용자인지 확인
+        if created_by not in allowed_users:
+            return jsonify({
+                "success": False, 
+                "message": "공지사항 작성 권한이 없습니다. 관리자에게 문의하세요."
+            }), 403
 
         conn = get_db_connection()
         cursor = conn.cursor()
