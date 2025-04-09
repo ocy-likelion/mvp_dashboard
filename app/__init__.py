@@ -1,34 +1,35 @@
 from flask import Flask
 from flask_cors import CORS
 from flasgger import Swagger
+from datetime import timedelta
 import logging
-from app.config import Config
 
 # 로깅 설정
 logging.basicConfig(level=logging.ERROR)
 
 def create_app():
     app = Flask(__name__, template_folder='templates')
-    
-    # 설정 적용
-    app.config.from_object(Config)
-    
-    # CORS 설정
-    CORS(app, supports_credentials=True)
-    
-    # Swagger 초기화
-    Swagger(app)
-    
-    # 블루프린트 등록
-    from app.routes import auth, admin, tasks, irregular_tasks, notices, issues, training, unchecked
-    
-    app.register_blueprint(auth.bp)
-    app.register_blueprint(admin.bp)
-    app.register_blueprint(tasks.bp)
-    app.register_blueprint(irregular_tasks.bp)
-    app.register_blueprint(notices.bp)
-    app.register_blueprint(issues.bp)
-    app.register_blueprint(training.bp)
-    app.register_blueprint(unchecked.bp)
-    
-    return app 
+    app.secret_key = 'your-secret-key'  # 실제 운영 환경에서는 안전한 난수를 사용하세요.
+
+    # 세션 설정 강화
+    app.config.update(
+        SESSION_COOKIE_SECURE=True,      # HTTPS에서만 쿠키 전송
+        SESSION_COOKIE_HTTPONLY=True,    # JavaScript에서 쿠키 접근 방지
+        SESSION_COOKIE_SAMESITE='Lax',   # CSRF 공격 방지
+        PERMANENT_SESSION_LIFETIME=timedelta(hours=12)  # 세션 유효 시간 12시간으로 설정
+    )
+
+    CORS(app, supports_credentials=True)  # CORS 설정 강화 (세션 쿠키 허용)
+
+    app.config['SWAGGER'] = {
+        'title': "업무 관리 대시보드 API",
+        'uiversion': 3,  # 최신 Swagger UI 사용
+        'specs_route': "/apidocs"  # 끝의 슬래시(/) 제거
+    }
+    Swagger(app)  # Flasgger 초기화
+
+    # 라우터 등록
+    from app.routes import register_routes
+    register_routes(app)
+
+    return app

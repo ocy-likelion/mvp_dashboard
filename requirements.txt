@@ -11,3 +11,4 @@ python-dotenv
 Flask-Mail
 itsdangerous
 bcrypt
+flask-swagger-ui==4.11.1
