@@ -1,8 +1,10 @@
 from app import create_app
 import os
 
-# 직접 환경 변수에서 PORT 값을 읽습니다
-PORT = int(os.getenv("PORT", 10000))
+try:
+    PORT = int(os.getenv("PORT", "10000"))
+except ValueError:
+    PORT = 10000
 
 app = create_app()
 
