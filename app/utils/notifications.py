@@ -15,9 +15,9 @@ class SlackNotifier:
             'default': os.getenv('SLACK_WEBHOOK_URL')  # 기본 웹훅 (기존 URL)
         }
         self.channels: Dict[str, str] = {
-            'notice': os.getenv('SLACK_CHANNEL', 'C08LASRA397'),  # 공지사항용 채널
-            'issue': os.getenv('SLACK_ISSUE_CHANNEL', 'C08J05328D7'),  # 이슈용 채널
-            'comment': os.getenv('SLACK_COMMENT_CHANNEL', 'D054AA0Q867')  # 댓글용 채널
+            'notice': os.getenv('SLACK_CHANNEL', 'C07GLQNQZA5'),  # 공지사항용 채널
+            'issue': os.getenv('SLACK_ISSUE_CHANNEL', 'C07GLQNQZA5'),  # 이슈용 채널
+            'comment': os.getenv('SLACK_COMMENT_CHANNEL', 'C07GLQNQZA5')  # 댓글용 채널
         }
         
         # 초기화 시 환경 변수 확인

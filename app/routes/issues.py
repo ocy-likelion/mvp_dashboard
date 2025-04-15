@@ -37,6 +37,7 @@ def add_issue():
     """
     try:
         data = request.json
+        # 요청 데이터 로깅
         logger.info(f"Received issue data: {data}")
         
         # 데이터 유효성 검사
@@ -44,13 +45,13 @@ def add_issue():
             logger.error("No JSON data received")
             return jsonify({"success": False, "message": "데이터가 없습니다."}), 400
             
-        # 필수 필드 검사 - 클라이언트 데이터 형식에 맞게 수정
-        required_fields = ['issue', 'training_course', 'username']
+        # 필수 필드 검사
+        required_fields = ['title', 'description', 'priority', 'status']
         for field in required_fields:
             if field not in data:
                 logger.error(f"Missing required field: {field}")
                 return jsonify({"success": False, "message": f"{field} 필드가 필요합니다."}), 400
-        
+                
         issue = data.get('issue')
         training_course = data.get('training_course')
         created_by = data.get('username')
