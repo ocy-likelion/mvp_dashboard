@@ -37,6 +37,21 @@ def add_issue():
     """
     try:
         data = request.json
+        # 요청 데이터 로깅
+        logger.info(f"Received issue data: {data}")
+        
+        # 데이터 유효성 검사
+        if not data:
+            logger.error("No JSON data received")
+            return jsonify({"success": False, "message": "데이터가 없습니다."}), 400
+            
+        # 필수 필드 검사
+        required_fields = ['title', 'description', 'priority', 'status']
+        for field in required_fields:
+            if field not in data:
+                logger.error(f"Missing required field: {field}")
+                return jsonify({"success": False, "message": f"{field} 필드가 필요합니다."}), 400
+                
         issue = data.get('issue')
         training_course = data.get('training_course')
         created_by = data.get('username')
@@ -66,8 +81,8 @@ def add_issue():
 
         return jsonify({"success": True, "message": "이슈가 등록되었습니다.", "id": issue_id}), 201
     except Exception as e:
-        logger.error(f"이슈 등록 중 오류: {str(e)}")
-        return jsonify({"success": False, "message": "이슈 등록 실패"}), 500
+        logger.error(f"Error creating issue: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "message": "이슈 생성 중 오류가 발생했습니다."}), 500
 
 
 @issues_bp.route('/issues', methods=['GET'])
