@@ -98,6 +98,7 @@ def get_current_user():
         return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
     return jsonify({"success": True, "user": session['user']}), 200
 
+
 @auth_bp.route('/user/change-password', methods=['POST'])
 def change_password():
     """
