@@ -171,15 +171,34 @@ def get_unchecked_descriptions():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # training_info 테이블을 조인하여 dept 정보 포함
         cursor.execute('''
-            SELECT ud.id, ud.content, ud.action_plan, ud.training_course, ti.dept, ud.created_at, ud.resolved
+            SELECT 
+                ud.id, 
+                ud.content, 
+                ud.action_plan, 
+                ud.training_course, 
+                ti.dept, 
+                ud.created_at, 
+                ud.resolved,
+                COALESCE(ti2.due, 3) as due,  -- due가 없으면 기본값 3일
+                (ud.created_at + (COALESCE(ti2.due, 3) || ' days')::interval)::date as deadline,
+                CASE 
+                    WHEN CURRENT_DATE > (ud.created_at + (COALESCE(ti2.due, 3) || ' days')::interval)::date 
+                    THEN TRUE 
+                    ELSE FALSE 
+                END as is_overdue
             FROM unchecked_descriptions ud
             JOIN training_info ti ON ud.training_course = ti.training_course
+            LEFT JOIN task_items ti2 ON ud.content LIKE ti2.task_name || '%에 대한 미체크 사유'  -- LIKE 연산자 사용
             WHERE ud.resolved = FALSE  
             ORDER BY ud.created_at DESC;
         ''')
         unchecked_items = cursor.fetchall()
+
+        # 디버깅을 위한 로깅 추가
+        logging.info(f"Found {len(unchecked_items)} unchecked items")
+        for item in unchecked_items:
+            logging.info(f"Item content: {item[1]}, due days: {item[7]}")
 
         cursor.close()
         conn.close()
@@ -189,12 +208,15 @@ def get_unchecked_descriptions():
             "data": [
                 {
                     "id": row[0],
-                    "content": row[1],  # 항목 설명
-                    "action_plan": row[2],  # 액션 플랜
+                    "content": row[1],
+                    "action_plan": row[2],
                     "training_course": row[3],
-                    "dept": row[4],  # 부서명 추가
+                    "dept": row[4],
                     "created_at": row[5],
-                    "resolved": row[6]
+                    "resolved": row[6],
+                    "due_days": row[7],
+                    "deadline": row[8],
+                    "is_overdue": row[9]
                 } for row in unchecked_items
             ]
         }), 200

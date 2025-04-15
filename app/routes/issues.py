@@ -3,11 +3,15 @@ import io
 import pandas as pd
 import logging
 from app.models.db import get_db_connection
+from app.utils.notifications import SlackNotifier
+from datetime import datetime
 
 issues_bp = Blueprint('issues', __name__)
 
+logger = logging.getLogger(__name__)
+
 @issues_bp.route('/issues', methods=['POST'])
-def save_issue():
+def add_issue():
     """
     이슈사항 저장 API
     ---
@@ -33,30 +37,37 @@ def save_issue():
     """
     try:
         data = request.json
-        issue_text = data.get('issue')
+        issue = data.get('issue')
         training_course = data.get('training_course')
-        date = data.get('date')
-        created_by = data.get('username')  # 프론트엔드에서 전달한 username 사용
-
-        if not issue_text or not training_course or not date or not created_by:
-            return jsonify({"success": False, "message": "이슈, 훈련 과정, 날짜, 작성자를 모두 입력하세요."}), 400
+        created_by = data.get('username')
+        
+        if not all([issue, training_course, created_by]):
+            return jsonify({"success": False, "message": "필수 데이터가 누락되었습니다."}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        query = '''
-            INSERT INTO issues (content, date, training_course, created_at, resolved, created_by)
-            VALUES (%s, %s, %s, NOW(), FALSE, %s)
-        '''
-        cursor.execute(query, (issue_text, date, training_course, created_by))
+        # 'issue' 대신 'content' 컬럼 사용
+        cursor.execute('''
+            INSERT INTO issues (content, training_course, date, created_by)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        ''', (issue, training_course, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), created_by))
+        
+        issue_id = cursor.fetchone()[0]
         conn.commit()
         cursor.close()
         conn.close()
 
-        return jsonify({"success": True, "message": "이슈가 저장되었습니다."}), 201
+        # 이슈 등록 알림
+        notifier = SlackNotifier()
+        notification_message = f"새로운 이슈가 등록되었습니다!\n과정명: {training_course}\n이슈: {issue}"
+        notifier.send_notification(notification_message, channel_type='issue')
+
+        return jsonify({"success": True, "message": "이슈가 등록되었습니다.", "id": issue_id}), 201
     except Exception as e:
-        logging.error("Error saving issue", exc_info=True)
-        return jsonify({"success": False, "message": "이슈 저장 실패"}), 500
+        logger.error(f"이슈 등록 중 오류: {str(e)}")
+        return jsonify({"success": False, "message": "이슈 등록 실패"}), 500
 
 
 @issues_bp.route('/issues', methods=['GET'])
@@ -117,63 +128,49 @@ def get_issues():
 
 # 이슈에 대한 댓글 달기
 @issues_bp.route('/issues/comments', methods=['POST'])
-def add_issue_comment():
-    """
-    이슈사항에 대한 댓글 저장 API
-    ---
-    tags:
-      - Issues
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - issue_id
-            - comment
-            - username
-          properties:
-            issue_id:
-              type: integer
-              example: 1
-            comment:
-              type: string
-              example: "이슈에 대한 답변입니다."
-            username:
-              type: string
-              example: "홍길동"
-    responses:
-      201:
-        description: 댓글 저장 성공
-      400:
-        description: 요청 데이터 오류
-      500:
-        description: 서버 오류 발생
-    """
+def add_comment():
     try:
         data = request.json
         issue_id = data.get('issue_id')
         comment = data.get('comment')
-        created_by = data.get('username')  # 프론트엔드에서 전달받은 username 사용
+        created_by = data.get('username')
 
-        if not issue_id or not comment or not created_by:
-            return jsonify({"success": False, "message": "이슈 ID, 댓글 내용, 작성자 정보를 모두 입력하세요."}), 400
+        if not all([issue_id, comment, created_by]):
+            return jsonify({"success": False, "message": "필수 데이터가 누락되었습니다."}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO issue_comments (issue_id, comment, created_at, created_by) VALUES (%s, %s, NOW(), %s)",
-            (issue_id, comment, created_by)
-        )
+
+        # 이슈 정보 조회 시 'issue' 대신 'content' 사용
+        cursor.execute('''
+            SELECT content, training_course FROM issues WHERE id = %s
+        ''', (issue_id,))
+        issue_info = cursor.fetchone()
+        
+        if not issue_info:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "message": "해당 이슈를 찾을 수 없습니다."}), 404
+
+        # 댓글 저장
+        cursor.execute('''
+            INSERT INTO issue_comments (issue_id, comment, created_by, created_at)
+            VALUES (%s, %s, %s, %s)
+        ''', (issue_id, comment, created_by, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+
         conn.commit()
         cursor.close()
         conn.close()
 
-        return jsonify({"success": True, "message": "댓글이 저장되었습니다."}), 201
+        # 댓글 등록 알림
+        notifier = SlackNotifier()
+        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n과정명: {issue_info[1]}\n댓글: {comment}"
+        notifier.send_notification(notification_message, channel_type='comment')
+
+        return jsonify({"success": True, "message": "댓글이 등록되었습니다."}), 201
     except Exception as e:
-        logging.error("Error saving issue comment", exc_info=True)
-        return jsonify({"success": False, "message": "댓글 저장 실패"}), 500
+        logger.error(f"댓글 등록 중 오류: {str(e)}")
+        return jsonify({"success": False, "message": "댓글 등록 실패"}), 500
 
 # 이슈에 대한 댓글 조회
 @issues_bp.route('/issues/comments', methods=['GET'])

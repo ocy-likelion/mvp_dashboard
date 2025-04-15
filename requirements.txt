@@ -12,3 +12,5 @@ Flask-Mail
 itsdangerous
 bcrypt
 flask-swagger-ui==4.11.1
+requests==2.31.0
+slack-sdk==3.19.0  # 버전을 명시적으로 지정

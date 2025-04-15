@@ -2,8 +2,54 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 import logging
 from app.models.db import get_db_connection
+from app.utils.notifications import SlackNotifier
+import os
 
 notices_bp = Blueprint('notices', __name__)
+logger = logging.getLogger(__name__)
+
+# SlackNotifier 인스턴스를 전역 변수로 생성하지 않음
+@notices_bp.route('/notices', methods=['POST'])
+def add_notice():
+    try:
+        data = request.json
+        title = data.get("title")
+        content = data.get("content")
+        created_by = data.get("username")
+        notice_type = data.get("type", "공지사항")
+
+        if not title or not content or not created_by:
+            return jsonify({"success": False, "message": "제목, 내용, 작성자를 모두 입력하세요."}), 400
+
+        # 허용된 사용자 확인
+        allowed_users = ["김은지", "장지연"]
+        if created_by not in allowed_users:
+            return jsonify({
+                "success": False, 
+                "message": "공지사항 작성 권한이 없습니다."
+            }), 403
+
+        # DB 작업
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO notices (title, content, date, created_by, type)
+            VALUES (%s, %s, %s, %s, %s)
+        ''', (title, content, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), created_by, notice_type))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        # Slack 알림 전송 (channel -> channel_type으로 수정)
+        notifier = SlackNotifier()
+        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {title}\n작성자: {created_by}"
+        notifier.send_notification(notification_message, channel_type='notice')
+
+        return jsonify({"success": True, "message": "공지사항이 저장되었습니다!"}), 201
+    except Exception as e:
+        logger.error(f"공지사항 추가 중 오류: {str(e)}")
+        return jsonify({"success": False, "message": "공지사항 추가 실패"}), 500
 
 @notices_bp.route('/notices', methods=['GET'])
 def get_notices():
@@ -46,81 +92,6 @@ def get_notices():
     except Exception as e:
         logging.error("Error retrieving notices", exc_info=True)
         return jsonify({"success": False, "message": "공지사항을 불러오는데 실패했습니다."}), 500
-
-@notices_bp.route('/notices', methods=['POST'])
-def add_notice():
-    """
-    공지사항 추가 API
-    ---
-    tags:
-      - Notices
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - title
-            - content
-            - username
-            - type
-          properties:
-            title:
-              type: string
-              example: "시스템 점검 안내"
-            content:
-              type: string
-              example: "금일 오후 6시부터 8시까지 시스템 점검이 진행됩니다."
-            username:
-              type: string
-              example: "홍길동"
-            type:
-              type: string
-              example: "공지사항"
-    responses:
-      201:
-        description: 공지사항 추가 성공
-      400:
-        description: 필수 데이터 누락
-      500:
-        description: 서버 오류 발생
-    """
-    try:
-        data = request.json
-        title = data.get("title")
-        content = data.get("content")
-        created_by = data.get("username")  # 프론트엔드에서 전달한 username 사용
-        notice_type = data.get("type", "공지사항")  # 기본값은 "공지사항"으로 설정
-
-        if not title or not content or not created_by:
-            return jsonify({"success": False, "message": "제목, 내용, 작성자를 모두 입력하세요."}), 400
-        
-        # 허용된 사용자 목록
-        allowed_users = ["김은지", "장지연"]  # 이 두 사용자만 공지사항을 작성할 수 있음
-        
-        # 현재 사용자가 허용된 사용자인지 확인
-        if created_by not in allowed_users:
-            return jsonify({
-                "success": False, 
-                "message": "공지사항 작성 권한이 없습니다. 관리자에게 문의하세요."
-            }), 403
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO notices (title, content, date, created_by, type)
-            VALUES (%s, %s, %s, %s, %s)
-        ''', (title, content, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), created_by, notice_type))
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "message": "공지사항이 추가되었습니다."}), 201
-    except Exception as e:
-        logging.error("공지사항 추가 오류", exc_info=True)
-        return jsonify({"success": False, "message": "공지사항 추가 실패"}), 500
 
 @notices_bp.route('/notices/<int:notice_id>', methods=['PUT'])
 def update_notice(notice_id):
