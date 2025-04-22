@@ -19,7 +19,7 @@ def create_issue():
         data = request.json
         logger.info(f"Received issue data: {data}")
         
-        # 1. 필수 필드 검사 (issue로 변경)
+        # 1. 필수 필드 검사
         required_fields = ['issue', 'training_course', 'username']
         missing_fields = [field for field in required_fields if not data.get(field)]
         
@@ -30,10 +30,9 @@ def create_issue():
                 "message": f"필수 필드가 누락되었습니다: {', '.join(missing_fields)}"
             }), 400
 
-        # 2. 기본값 설정 (issue를 title로 매핑)
+        # 2. 기본값 설정 (issue를 content로 매핑)
         issue_data = {
-            'title': data['issue'],  # issue 필드를 title로 사용
-            'description': data.get('description', data['issue']),  # description 기본값도 issue 사용
+            'content': data['issue'],  # title -> content로 변경
             'training_course': data['training_course'],
             'username': data['username'],
             'priority': data.get('priority', 'medium'),
@@ -48,12 +47,11 @@ def create_issue():
 
         cursor.execute('''
             INSERT INTO issues 
-            (title, description, training_course, username, priority, status, date, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (content, training_course, username, priority, status, date, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         ''', (
-            issue_data['title'],
-            issue_data['description'],
+            issue_data['content'],
             issue_data['training_course'],
             issue_data['username'],
             issue_data['priority'],
@@ -70,7 +68,7 @@ def create_issue():
             notifier = SlackNotifier()
             message = f"*새로운 이슈가 등록되었습니다!*\n" \
                      f">*과정:* {issue_data['training_course']}\n" \
-                     f">*제목:* {issue_data['title']}\n" \
+                     f">*내용:* {issue_data['content']}\n" \
                      f">*작성자:* {issue_data['username']}\n" \
                      f">*우선순위:* {issue_data['priority']}"
             notifier.send_notification(message, 'issue')
