@@ -11,78 +11,94 @@ issues_bp = Blueprint('issues', __name__)
 logger = logging.getLogger(__name__)
 
 @issues_bp.route('/issues', methods=['POST'])
-def add_issue():
+def create_issue():
     """
-    이슈사항 저장 API
-    ---
-    tags:
-      - Issues
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            issue:
-              type: string
-              example: "강의 자료 오류 발생"
-    responses:
-      201:
-        description: 이슈사항 저장 성공
-      400:
-        description: 요청 데이터 오류
-      500:
-        description: 서버 오류
+    이슈 생성 API
     """
     try:
         data = request.json
-        # 요청 데이터 로깅
         logger.info(f"Received issue data: {data}")
         
-        # 데이터 유효성 검사
-        if not data:
-            logger.error("No JSON data received")
-            return jsonify({"success": False, "message": "데이터가 없습니다."}), 400
-            
-        # 필수 필드 검사
-        required_fields = ['title', 'description', 'priority', 'status']
-        for field in required_fields:
-            if field not in data:
-                logger.error(f"Missing required field: {field}")
-                return jsonify({"success": False, "message": f"{field} 필드가 필요합니다."}), 400
-                
-        issue = data.get('issue')
-        training_course = data.get('training_course')
-        created_by = data.get('username')
+        # 1. 필수 필드 검사
+        required_fields = ['title', 'training_course', 'username']
+        missing_fields = [field for field in required_fields if not data.get(field)]
         
-        if not all([issue, training_course, created_by]):
-            return jsonify({"success": False, "message": "필수 데이터가 누락되었습니다."}), 400
+        if missing_fields:
+            logger.error(f"Missing required fields: {missing_fields}")
+            return jsonify({
+                "success": False,
+                "message": f"필수 필드가 누락되었습니다: {', '.join(missing_fields)}"
+            }), 400
 
+        # 2. 기본값 설정
+        issue_data = {
+            'title': data['title'],
+            'description': data.get('description', data['title']),
+            'training_course': data['training_course'],
+            'username': data['username'],
+            'priority': data.get('priority', 'medium'),
+            'status': data.get('status', 'open'),
+            'date': data.get('date'),
+            'created_at': datetime.now().isoformat()
+        }
+
+        # 3. 데이터베이스 저장
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # 'issue' 대신 'content' 컬럼 사용
+
         cursor.execute('''
-            INSERT INTO issues (content, training_course, date, created_by)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO issues 
+            (title, description, training_course, username, priority, status, date, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        ''', (issue, training_course, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), created_by))
-        
+        ''', (
+            issue_data['title'],
+            issue_data['description'],
+            issue_data['training_course'],
+            issue_data['username'],
+            issue_data['priority'],
+            issue_data['status'],
+            issue_data['date'],
+            issue_data['created_at']
+        ))
+
         issue_id = cursor.fetchone()[0]
         conn.commit()
-        cursor.close()
-        conn.close()
 
-        # 이슈 등록 알림
-        notifier = SlackNotifier()
-        notification_message = f"새로운 이슈가 등록되었습니다!\n과정명: {training_course}\n이슈: {issue}"
-        notifier.send_notification(notification_message, channel_type='issue')
+        # 4. Slack 알림 전송
+        try:
+            notifier = SlackNotifier()
+            message = f"*새로운 이슈가 등록되었습니다!*\n" \
+                     f">*과정:* {issue_data['training_course']}\n" \
+                     f">*제목:* {issue_data['title']}\n" \
+                     f">*작성자:* {issue_data['username']}\n" \
+                     f">*우선순위:* {issue_data['priority']}"
+            notifier.send_notification(message, 'issue')
+        except Exception as e:
+            logger.error(f"Slack notification failed: {str(e)}")
+            # Slack 알림 실패는 이슈 생성 실패로 처리하지 않음
 
-        return jsonify({"success": True, "message": "이슈가 등록되었습니다.", "id": issue_id}), 201
+        # 5. 성공 응답
+        return jsonify({
+            "success": True,
+            "message": "이슈가 성공적으로 생성되었습니다.",
+            "data": {
+                "id": issue_id,
+                **issue_data
+            }
+        }), 201
+
     except Exception as e:
         logger.error(f"Error creating issue: {str(e)}", exc_info=True)
-        return jsonify({"success": False, "message": "이슈 생성 중 오류가 발생했습니다."}), 500
+        return jsonify({
+            "success": False,
+            "message": "이슈 생성 중 오류가 발생했습니다."
+        }), 500
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 
 @issues_bp.route('/issues', methods=['GET'])
