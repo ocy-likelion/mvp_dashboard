@@ -19,8 +19,8 @@ def create_issue():
         data = request.json
         logger.info(f"Received issue data: {data}")
         
-        # 1. 필수 필드 검사
-        required_fields = ['title', 'training_course', 'username']
+        # 1. 필수 필드 검사 (issue로 변경)
+        required_fields = ['issue', 'training_course', 'username']
         missing_fields = [field for field in required_fields if not data.get(field)]
         
         if missing_fields:
@@ -30,10 +30,10 @@ def create_issue():
                 "message": f"필수 필드가 누락되었습니다: {', '.join(missing_fields)}"
             }), 400
 
-        # 2. 기본값 설정
+        # 2. 기본값 설정 (issue를 title로 매핑)
         issue_data = {
-            'title': data['title'],
-            'description': data.get('description', data['title']),
+            'title': data['issue'],  # issue 필드를 title로 사용
+            'description': data.get('description', data['issue']),  # description 기본값도 issue 사용
             'training_course': data['training_course'],
             'username': data['username'],
             'priority': data.get('priority', 'medium'),
