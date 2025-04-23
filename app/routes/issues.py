@@ -30,15 +30,15 @@ def create_issue():
                 "message": f"필수 필드가 누락되었습니다: {', '.join(missing_fields)}"
             }), 400
 
-        # 2. 기본값 설정 (issue를 content로 매핑)
+        # 2. 기본값 설정
         issue_data = {
-            'content': data['issue'],  # title -> content로 변경
+            'content': data['issue'],
             'training_course': data['training_course'],
             'username': data['username'],
-            'priority': data.get('priority', 'medium'),
-            'status': data.get('status', 'open'),
+            'created_by': data['username'],  # username과 동일하게 설정
             'date': data.get('date'),
-            'created_at': datetime.now().isoformat()
+            'created_at': datetime.now().isoformat(),
+            'resolved': False  # 기본값 False
         }
 
         # 3. 데이터베이스 저장
@@ -47,17 +47,17 @@ def create_issue():
 
         cursor.execute('''
             INSERT INTO issues 
-            (content, training_course, username, priority, status, date, created_at)
+            (content, training_course, username, created_by, date, created_at, resolved)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         ''', (
             issue_data['content'],
             issue_data['training_course'],
             issue_data['username'],
-            issue_data['priority'],
-            issue_data['status'],
+            issue_data['created_by'],
             issue_data['date'],
-            issue_data['created_at']
+            issue_data['created_at'],
+            issue_data['resolved']
         ))
 
         issue_id = cursor.fetchone()[0]
@@ -69,12 +69,10 @@ def create_issue():
             message = f"*새로운 이슈가 등록되었습니다!*\n" \
                      f">*과정:* {issue_data['training_course']}\n" \
                      f">*내용:* {issue_data['content']}\n" \
-                     f">*작성자:* {issue_data['username']}\n" \
-                     f">*우선순위:* {issue_data['priority']}"
+                     f">*작성자:* {issue_data['username']}"
             notifier.send_notification(message, 'issue')
         except Exception as e:
             logger.error(f"Slack notification failed: {str(e)}")
-            # Slack 알림 실패는 이슈 생성 실패로 처리하지 않음
 
         # 5. 성공 응답
         return jsonify({
