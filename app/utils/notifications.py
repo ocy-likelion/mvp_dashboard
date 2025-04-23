@@ -57,7 +57,7 @@ class SlackNotifier:
 
     def notify_new_notice(self, title, author):
         message = f"""
-📢 *새로운 공지사항이 등록되었습니다!* \n 확인 후 *체크이모지*✅를 반드시 눌러주세요!
+📢 *새로운 공지사항이 등록되었습니다!* 확인 후 체크이모지*✅를 반드시 눌러주세요!
 • 작성자: {author}
 • 제목: {title}
 """
