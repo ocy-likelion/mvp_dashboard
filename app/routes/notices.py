@@ -22,7 +22,7 @@ def add_notice():
             return jsonify({"success": False, "message": "제목, 내용, 작성자를 모두 입력하세요."}), 400
 
         # 허용된 사용자 확인
-        allowed_users = ["김은지", "장지연"]
+        allowed_users = ["김은지", "장지연", "김슬기"]
         if created_by not in allowed_users:
             return jsonify({
                 "success": False, 
