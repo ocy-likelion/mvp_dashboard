@@ -5,11 +5,12 @@ from app.models.db import get_db_connection
 from app.utils.notifications import SlackNotifier
 import os
 
-notices_bp = Blueprint('notices', __name__)
+notices_bp = Blueprint("notices", __name__)
 logger = logging.getLogger(__name__)
 
+
 # SlackNotifier 인스턴스를 전역 변수로 생성하지 않음
-@notices_bp.route('/notices', methods=['POST'])
+@notices_bp.route("/notices", methods=["POST"])
 def add_notice():
     try:
         data = request.json
@@ -19,39 +20,61 @@ def add_notice():
         notice_type = data.get("type", "공지사항")
 
         if not title or not content or not created_by:
-            return jsonify({"success": False, "message": "제목, 내용, 작성자를 모두 입력하세요."}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "제목, 내용, 작성자를 모두 입력하세요.",
+                    }
+                ),
+                400,
+            )
 
         # 허용된 사용자 확인
         allowed_users = ["김은지", "장지연", "김슬기"]
         if created_by not in allowed_users:
-            return jsonify({
-                "success": False, 
-                "message": "공지사항 작성 권한이 없습니다."
-            }), 403
+            return (
+                jsonify(
+                    {"success": False, "message": "공지사항 작성 권한이 없습니다."}
+                ),
+                403,
+            )
 
         # DB 작업
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT INTO notices (title, content, date, created_by, type)
             VALUES (%s, %s, %s, %s, %s)
-        ''', (title, content, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), created_by, notice_type))
-        
+        """,
+            (
+                title,
+                content,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                created_by,
+                notice_type,
+            ),
+        )
+
         conn.commit()
         cursor.close()
         conn.close()
 
         # Slack 알림 전송 (channel -> channel_type으로 수정)
         notifier = SlackNotifier()
-        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {title}\n작성자: {created_by}"
-        notifier.send_notification(notification_message, channel_type='notice')
+        notification_message = (
+            f"새로운 공지사항이 등록되었습니다!\n제목: {title}\n작성자: {created_by}"
+        )
+        notifier.send_notification(notification_message, channel_type="notice")
 
         return jsonify({"success": True, "message": "공지사항이 저장되었습니다!"}), 201
     except Exception as e:
         logger.error(f"공지사항 추가 중 오류: {str(e)}")
         return jsonify({"success": False, "message": "공지사항 추가 실패"}), 500
 
-@notices_bp.route('/notices', methods=['GET'])
+
+@notices_bp.route("/notices", methods=["GET"])
 def get_notices():
     """
     공지사항 조회 API
@@ -67,33 +90,38 @@ def get_notices():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # 'created_at' 대신 'date' 컬럼 사용
-        cursor.execute("SELECT * FROM notices WHERE is_deleted = FALSE ORDER BY date DESC")
-        
+        cursor.execute(
+            "SELECT * FROM notices WHERE is_deleted = FALSE ORDER BY date DESC"
+        )
+
         # 결과를 딕셔너리 형태로 변환
-        columns = ['id', 'type', 'title', 'content', 'date', 'created_by']
+        columns = ["id", "type", "title", "content", "date", "created_by"]
         notice_rows = cursor.fetchall()
         notices = []
-        
+
         for row in notice_rows:
             notice_dict = {}
             for i, column in enumerate(columns):
                 notice_dict[column] = row[i]
             notices.append(notice_dict)
-        
+
         cursor.close()
         conn.close()
-        
-        return jsonify({
-            "success": True,
-            "data": notices
-        }), 200
+
+        return jsonify({"success": True, "data": notices}), 200
     except Exception as e:
         logging.error("Error retrieving notices", exc_info=True)
-        return jsonify({"success": False, "message": "공지사항을 불러오는데 실패했습니다."}), 500
+        return (
+            jsonify(
+                {"success": False, "message": "공지사항을 불러오는데 실패했습니다."}
+            ),
+            500,
+        )
 
-@notices_bp.route('/notices/<int:notice_id>', methods=['PUT'])
+
+@notices_bp.route("/notices/<int:notice_id>", methods=["PUT"])
 def update_notice(notice_id):
     """
     공지사항 수정 API
@@ -136,58 +164,85 @@ def update_notice(notice_id):
     """
     try:
         data = request.json
-        title = data.get('title')
-        content = data.get('content')
-        notice_type = data.get('type')
-        username = data.get('username')  # 수정자 정보
+        title = data.get("title")
+        content = data.get("content")
+        notice_type = data.get("type")
+        username = data.get("username")  # 수정자 정보
 
         if not title or not content or not username:
-            return jsonify({"success": False, "message": "제목, 내용, 사용자명을 모두 입력하세요."}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "제목, 내용, 사용자명을 모두 입력하세요.",
+                    }
+                ),
+                400,
+            )
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # 먼저 해당 공지사항이 존재하는지 확인
         cursor.execute("SELECT id FROM notices WHERE id = %s", (notice_id,))
         notice = cursor.fetchone()
-        
+
         if not notice:
             cursor.close()
             conn.close()
-            return jsonify({"success": False, "message": "해당 공지사항을 찾을 수 없습니다."}), 404
-        
+            return (
+                jsonify(
+                    {"success": False, "message": "해당 공지사항을 찾을 수 없습니다."}
+                ),
+                404,
+            )
+
         # 공지사항 업데이트
         update_fields = ["title = %s", "content = %s", "date = NOW()"]
         params = [title, content]
-        
+
         if notice_type:
             update_fields.append("type = %s")
             params.append(notice_type)
-        
+
         # 수정자 정보 추가
         update_fields.append("modified_by = %s")
         params.append(username)
-        
+
         params.append(notice_id)  # WHERE 조건용
-        
+
         query = f"UPDATE notices SET {', '.join(update_fields)} WHERE id = %s"
         cursor.execute(query, tuple(params))
-        
+
         if cursor.rowcount == 0:
             conn.close()
-            return jsonify({"success": False, "message": "공지사항 수정에 실패했습니다."}), 500
-        
+            return (
+                jsonify({"success": False, "message": "공지사항 수정에 실패했습니다."}),
+                500,
+            )
+
         conn.commit()
         cursor.close()
         conn.close()
-        
-        return jsonify({"success": True, "message": "공지사항이 성공적으로 수정되었습니다."}), 200
-        
+
+        return (
+            jsonify(
+                {"success": True, "message": "공지사항이 성공적으로 수정되었습니다."}
+            ),
+            200,
+        )
+
     except Exception as e:
         logging.error("공지사항 수정 오류", exc_info=True)
-        return jsonify({"success": False, "message": "공지사항 수정 중 오류가 발생했습니다."}), 500
+        return (
+            jsonify(
+                {"success": False, "message": "공지사항 수정 중 오류가 발생했습니다."}
+            ),
+            500,
+        )
 
-@notices_bp.route('/notices/<int:notice_id>', methods=['DELETE'])
+
+@notices_bp.route("/notices/<int:notice_id>", methods=["DELETE"])
 def delete_notice(notice_id):
     """
     공지사항 삭제 API
@@ -211,34 +266,55 @@ def delete_notice(notice_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # 공지사항 존재 확인
         cursor.execute("SELECT id FROM notices WHERE id = %s", (notice_id,))
         notice = cursor.fetchone()
-        
+
         if not notice:
             cursor.close()
             conn.close()
-            return jsonify({"success": False, "message": "해당 공지사항을 찾을 수 없습니다."}), 404
-        
+            return (
+                jsonify(
+                    {"success": False, "message": "해당 공지사항을 찾을 수 없습니다."}
+                ),
+                404,
+            )
+
         # 실제 삭제 대신 is_deleted 필드 업데이트
-        cursor.execute("UPDATE notices SET is_deleted = TRUE WHERE id = %s", (notice_id,))
-        
+        cursor.execute(
+            "UPDATE notices SET is_deleted = TRUE WHERE id = %s", (notice_id,)
+        )
+
         if cursor.rowcount == 0:
             conn.close()
-            return jsonify({"success": False, "message": "공지사항 삭제에 실패했습니다."}), 500
-        
+            return (
+                jsonify({"success": False, "message": "공지사항 삭제에 실패했습니다."}),
+                500,
+            )
+
         conn.commit()
         cursor.close()
         conn.close()
-        
-        return jsonify({"success": True, "message": "공지사항이 성공적으로 삭제되었습니다."}), 200
-        
+
+        return (
+            jsonify(
+                {"success": True, "message": "공지사항이 성공적으로 삭제되었습니다."}
+            ),
+            200,
+        )
+
     except Exception as e:
         logging.error("공지사항 삭제 오류", exc_info=True)
-        return jsonify({"success": False, "message": "공지사항 삭제 중 오류가 발생했습니다."}), 500
+        return (
+            jsonify(
+                {"success": False, "message": "공지사항 삭제 중 오류가 발생했습니다."}
+            ),
+            500,
+        )
 
-@notices_bp.route('/notices/read', methods=['POST'])
+
+@notices_bp.route("/notices/read", methods=["POST"])
 def mark_notice_read():
     """
     공지사항 읽음 표시 API
@@ -275,18 +351,29 @@ def mark_notice_read():
         username = data.get("username")
 
         if not notice_id or not username:
-            return jsonify({"success": False, "message": "공지사항 ID와 사용자 이름이 필요합니다."}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "공지사항 ID와 사용자 이름이 필요합니다.",
+                    }
+                ),
+                400,
+            )
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # ON CONFLICT DO NOTHING을 사용하여 동일한 사용자가 같은 공지를 여러 번 읽음 표시해도 에러가 나지 않도록 함
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT INTO notice_reads (notice_id, username, read_at)
             VALUES (%s, %s, NOW())
             ON CONFLICT (notice_id, username) DO NOTHING
-        ''', (notice_id, username))
-        
+        """,
+            (notice_id, username),
+        )
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -296,7 +383,8 @@ def mark_notice_read():
         logging.error("공지사항 읽음 표시 오류", exc_info=True)
         return jsonify({"success": False, "message": "공지사항 읽음 표시 실패"}), 500
 
-@notices_bp.route('/notices/reads', methods=['GET'])
+
+@notices_bp.route("/notices/reads", methods=["GET"])
 def get_notice_reads():
     """
     공지사항별 읽은 사용자 목록 조회 API
@@ -318,28 +406,42 @@ def get_notice_reads():
         description: 서버 오류 발생
     """
     try:
-        notice_id = request.args.get('notice_id')
+        notice_id = request.args.get("notice_id")
 
         if not notice_id:
-            return jsonify({"success": False, "message": "공지사항 ID가 필요합니다."}), 400
+            return (
+                jsonify({"success": False, "message": "공지사항 ID가 필요합니다."}),
+                400,
+            )
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT username, read_at 
             FROM notice_reads 
             WHERE notice_id = %s 
             ORDER BY read_at DESC
-        ''', (notice_id,))
-        
+        """,
+            (notice_id,),
+        )
+
         reads = cursor.fetchall()
         cursor.close()
         conn.close()
 
-        return jsonify({
-            "success": True,
-            "data": [{"username": row[0], "read_at": row[1]} for row in reads]
-        }), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "data": [{"username": row[0], "read_at": row[1]} for row in reads],
+                }
+            ),
+            200,
+        )
     except Exception as e:
         logging.error("공지사항 읽음 목록 조회 오류", exc_info=True)
-        return jsonify({"success": False, "message": "공지사항 읽음 목록 조회 실패"}), 500
+        return (
+            jsonify({"success": False, "message": "공지사항 읽음 목록 조회 실패"}),
+            500,
+        )
