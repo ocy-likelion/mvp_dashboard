@@ -14,3 +14,4 @@ bcrypt
 flask-swagger-ui==4.11.1
 requests==2.31.0  # Slack API 호출용
 slack-sdk==3.19.0  # 버전을 명시적으로 지정
+black==25.1.0
