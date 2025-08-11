@@ -12,7 +12,25 @@ slack_notifier = SlackNotifier()
 
 @notifications_bp.route("/notifications/unread-count", methods=["GET"])
 def get_unread_count():
-    """사용자별 미확인 알림 개수 조회"""
+    """
+    사용자별 미확인 알림 개수 조회 API
+    ---
+    tags:
+      - Notifications
+    parameters:
+      - name: username
+        in: query
+        type: string
+        required: true
+        description: 사용자명
+    responses:
+      200:
+        description: 미확인 알림 개수 반환
+      400:
+        description: 사용자명 누락
+      500:
+        description: 서버 오류
+    """
     try:
         username = request.args.get("username")
         if not username:

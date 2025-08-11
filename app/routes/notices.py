@@ -12,6 +12,44 @@ logger = logging.getLogger(__name__)
 # SlackNotifier 인스턴스를 전역 변수로 생성하지 않음
 @notices_bp.route("/notices", methods=["POST"])
 def add_notice():
+    """
+    공지사항 추가 API
+    ---
+    tags:
+      - Notices
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - title
+            - content
+            - username
+          properties:
+            title:
+              type: string
+              description: 공지사항 제목
+            content:
+              type: string
+              description: 공지사항 내용
+            username:
+              type: string
+              description: 작성자명
+            type:
+              type: string
+              description: 공지사항 유형, 기본값은 공지사항
+    responses:
+      201:
+        description: 공지사항 추가 성공
+      400:
+        description: 필수 데이터 누락
+      403:
+        description: 권한 없음
+      500:
+        description: 서버 오류
+    """
     try:
         data = request.json
         title = data.get("title")

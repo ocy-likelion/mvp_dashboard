@@ -15,6 +15,39 @@ logger = logging.getLogger(__name__)
 def create_issue():
     """
     이슈 생성 API
+    ---
+    tags:
+      - Issues
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - issue
+            - training_course
+            - username
+          properties:
+            issue:
+              type: string
+              description: 이슈 내용
+            training_course:
+              type: string
+              description: 교육 과정명
+            username:
+              type: string
+              description: 작성자명
+            date:
+              type: string
+              description: 이슈 발생 날짜 (선택사항)
+    responses:
+      201:
+        description: 이슈 생성 성공
+      400:
+        description: 필수 필드 누락
+      500:
+        description: 서버 오류
     """
     try:
         data = request.json
@@ -180,6 +213,41 @@ def get_issues():
 # 이슈에 대한 댓글 달기
 @issues_bp.route("/issues/comments", methods=["POST"])
 def add_comment():
+    """
+    이슈 댓글 추가 API
+    ---
+    tags:
+      - Issues
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - issue_id
+            - comment
+            - username
+          properties:
+            issue_id:
+              type: integer
+              description: 이슈 ID
+            comment:
+              type: string
+              description: 댓글 내용
+            username:
+              type: string
+              description: 작성자명
+    responses:
+      201:
+        description: 댓글 추가 성공
+      400:
+        description: 필수 데이터 누락
+      404:
+        description: 이슈를 찾을 수 없음
+      500:
+        description: 서버 오류
+    """
     try:
         data = request.json
         issue_id = data.get("issue_id")
