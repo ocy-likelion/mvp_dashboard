@@ -23,7 +23,16 @@ def create_app():
     logger = logging.getLogger(__name__)
     logger.info("애플리케이션 시작")
 
-    app.secret_key = "your-secret-key"  # 실제 운영 환경에서는 안전한 난수를 사용하세요.
+    secret_key = os.getenv("SECRET_KEY")
+    if not secret_key:
+        import secrets
+
+        secret_key = secrets.token_hex(32)  # 32바이트(256비트) 랜덤 키 생성
+        logger.warning(
+            "SECRET_KEY 환경 변수가 설정되지 않았습니다. 임시 키를 생성합니다."
+        )
+
+    app.secret_key = secret_key
 
     # 세션 설정 강화
     app.config.update(
