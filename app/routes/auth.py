@@ -1,6 +1,11 @@
 from flask import Blueprint, request, jsonify, session
 import logging
 from app.models.db import get_db_connection
+from app.utils.password import (
+    hash_password,
+    verify_password,
+    validate_password_strength,
+)
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -56,7 +61,16 @@ def login():
         cursor.close()
         conn.close()
 
-        if not user or user[1] != password:
+        if not user:
+            return (
+                jsonify(
+                    {"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}
+                ),
+                401,
+            )
+
+        # 비밀번호 검증 (bcrypt 사용)
+        if not verify_password(password, user[1]):
             return (
                 jsonify(
                     {"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}
@@ -171,13 +185,14 @@ def change_password():
                 400,
             )
 
-        # 새 비밀번호 유효성 검사 (필요한 경우)
-        if len(new_password) < 4:
+        # 새 비밀번호 강도 검증
+        is_valid, error_message = validate_password_strength(new_password)
+        if not is_valid:
             return (
                 jsonify(
                     {
                         "success": False,
-                        "message": "새 비밀번호는 최소 4자 이상이어야 합니다.",
+                        "message": error_message,
                     }
                 ),
                 400,
@@ -188,8 +203,8 @@ def change_password():
 
         # 현재 비밀번호 확인
         cursor.execute(
-            "SELECT id FROM users WHERE username = %s AND password = %s",
-            (username, current_password),
+            "SELECT id, password FROM users WHERE username = %s",
+            (username,),
         )
         user = cursor.fetchone()
 
@@ -206,10 +221,27 @@ def change_password():
                 401,
             )
 
+        # 현재 비밀번호 검증 (bcrypt 사용)
+        if not verify_password(current_password, user[1]):
+            cursor.close()
+            conn.close()
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "사용자명 또는 현재 비밀번호가 일치하지 않습니다.",
+                    }
+                ),
+                401,
+            )
+
+        # 새 비밀번호 해싱
+        hashed_new_password = hash_password(new_password)
+
         # 비밀번호 업데이트
         cursor.execute(
-            "UPDATE users SET password = %s WHERE username = %s AND password = %s",
-            (new_password, username, current_password),
+            "UPDATE users SET password = %s WHERE id = %s",
+            (hashed_new_password, user[0]),
         )
 
         if cursor.rowcount == 0:
