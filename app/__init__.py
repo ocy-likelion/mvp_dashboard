@@ -6,6 +6,7 @@ from flask import Flask
 from flask_cors import CORS
 from flasgger import Swagger
 from datetime import timedelta
+from app.models.db import db, init_db
 
 # 환경 변수 로딩을 가장 먼저 수행
 load_dotenv()
@@ -33,6 +34,20 @@ def create_app():
         )
 
     app.secret_key = secret_key
+
+    # SQLAlchemy 설정
+    from app.config import (
+        SQLALCHEMY_DATABASE_URI,
+        SQLALCHEMY_TRACK_MODIFICATIONS,
+        SQLALCHEMY_ENGINE_OPTIONS,
+    )
+
+    app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = SQLALCHEMY_ENGINE_OPTIONS
+
+    # 데이터베이스 초기화
+    init_db(app)
 
     # 세션 설정 강화
     app.config.update(
