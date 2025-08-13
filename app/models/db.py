@@ -17,6 +17,9 @@ def init_db(app):
     session_factory = sessionmaker(bind=engine)
     Session = scoped_session(session_factory)
 
+    # 앱에 db 객체 등록
+    app.db = db
+
     return Session
 
 
