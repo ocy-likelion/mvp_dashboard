@@ -1,9 +1,11 @@
 from flask import Blueprint, request, jsonify
 import logging
-from app.models.db import get_db_connection
-from datetime import datetime
+from app.models.db import get_db_session
+from app.models.models import TrainingInfo, UncheckedDescription, UncheckedComment, TaskItem
+from datetime import datetime, timedelta
 
 training_bp = Blueprint("training", __name__)
+logger = logging.getLogger(__name__)
 
 
 @training_bp.route("/training_courses", methods=["GET"])
@@ -21,29 +23,22 @@ def get_training_courses():
         description: 훈련과정 목록 불러오기 실패
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
+        session = get_db_session()
+        
         # 현재 날짜 기준으로 종료된 지 1주일 이내이거나 아직 진행 중인 과정만 조회
-        cursor.execute(
-            """
-            SELECT training_course 
-            FROM training_info 
-            WHERE end_date >= CURRENT_DATE - INTERVAL '7 days'
-            ORDER BY start_date DESC
-        """
-        )
+        one_week_ago = datetime.now().date() - timedelta(days=7)
+        courses_query = session.query(TrainingInfo).filter(
+            TrainingInfo.end_date >= one_week_ago
+        ).order_by(TrainingInfo.start_date.desc())
+        
+        courses = [course.training_course for course in courses_query.all()]
+        
+        session.close()
 
-        courses = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        return (
-            jsonify({"success": True, "data": [course[0] for course in courses]}),
-            200,
-        )
+        return jsonify({"success": True, "data": courses}), 200
+        
     except Exception as e:
-        logging.error("Error fetching training courses", exc_info=True)
+        logger.error("Error fetching training courses", exc_info=True)
         return (
             jsonify(
                 {
@@ -121,24 +116,33 @@ def save_training_info():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO training_info (training_course, start_date, end_date, dept, manager_name)
-            VALUES (%s, %s, %s, %s, %s)
-        """,
-            (training_course, start_date, end_date, dept, manager_name),
-        )
-
-        conn.commit()
-        cursor.close()
-        conn.close()
+        session = get_db_session()
+        try:
+            # 날짜 문자열을 Date 객체로 변환
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+            
+            training_info = TrainingInfo(
+                training_course=training_course,
+                start_date=start_date_obj,
+                end_date=end_date_obj,
+                dept=dept,
+                manager_name=manager_name,
+            )
+            
+            session.add(training_info)
+            session.commit()
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"훈련 과정 저장 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "Failed to save training info"}), 500
+        finally:
+            session.close()
 
         return jsonify({"success": True, "message": "훈련 과정이 저장되었습니다!"}), 201
     except Exception as e:
-        logging.error("Error saving training info", exc_info=True)
+        logger.error("Error saving training info", exc_info=True)
         return (
             jsonify({"success": False, "message": "Failed to save training info"}),
             500,
@@ -159,33 +163,27 @@ def get_training_info():
         description: 훈련 과정 목록 조회 실패
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT training_course, start_date, end_date, dept FROM training_info ORDER BY start_date DESC"
-        )
-        courses = cursor.fetchall()
-
-        cursor.close()
-        conn.close()
-
-        return jsonify(
+        session = get_db_session()
+        
+        courses_query = session.query(TrainingInfo).order_by(TrainingInfo.start_date.desc())
+        courses = courses_query.all()
+        
+        courses_data = [
             {
-                "success": True,
-                "data": [
-                    {
-                        "training_course": row[0],
-                        "start_date": row[1],
-                        "end_date": row[2],
-                        "dept": row[3],
-                    }
-                    for row in courses
-                ],
+                "training_course": course.training_course,
+                "start_date": course.start_date.strftime("%Y-%m-%d") if course.start_date else None,
+                "end_date": course.end_date.strftime("%Y-%m-%d") if course.end_date else None,
+                "dept": course.dept,
             }
-        )
+            for course in courses
+        ]
+        
+        session.close()
+
+        return jsonify({"success": True, "data": courses_data})
+        
     except Exception as e:
-        logging.error("Error fetching training info", exc_info=True)
+        logger.error("Error fetching training info", exc_info=True)
         return (
             jsonify({"success": False, "message": "Failed to fetch training info"}),
             500,
@@ -206,68 +204,55 @@ def get_unchecked_descriptions():
         description: 미체크 항목 목록 조회 실패
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
+        
+        # 미체크 항목 조회 (resolved=False인 항목들)
+        unchecked_query = session.query(UncheckedDescription).filter(
+            UncheckedDescription.resolved == False
+        ).order_by(UncheckedDescription.created_at.desc())
+        
+        unchecked_items = []
+        for item in unchecked_query.all():
+            # 부서 정보 조회
+            training_info = session.query(TrainingInfo).filter(
+                TrainingInfo.training_course == item.training_course
+            ).first()
+            dept = training_info.dept if training_info else None
+            
+            # due days 조회 (task_items에서 매칭되는 항목 찾기)
+            due_days = 3  # 기본값
+            if item.content:
+                task_item = session.query(TaskItem).filter(
+                    TaskItem.task_name.in_([task_name for task_name in session.query(TaskItem.task_name).all()])
+                ).filter(
+                    item.content.like(f"%{TaskItem.task_name}%에 대한 미체크 사유")
+                ).first()
+                if task_item:
+                    due_days = task_item.due or 3
+            
+            # 마감일 계산
+            deadline = item.created_at.date() + timedelta(days=due_days)
+            is_overdue = datetime.now().date() > deadline
+            
+            unchecked_items.append({
+                "id": item.id,
+                "content": item.content,
+                "action_plan": item.action_plan,
+                "training_course": item.training_course,
+                "dept": dept,
+                "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "resolved": item.resolved,
+                "due_days": due_days,
+                "deadline": deadline.strftime("%Y-%m-%d"),
+                "is_overdue": is_overdue,
+            })
+        
+        session.close()
 
-        cursor.execute(
-            """
-            SELECT 
-                ud.id, 
-                ud.content, 
-                ud.action_plan, 
-                ud.training_course, 
-                ti.dept, 
-                ud.created_at, 
-                ud.resolved,
-                COALESCE(ti2.due, 3) as due,  -- due가 없으면 기본값 3일
-                (ud.created_at + (COALESCE(ti2.due, 3) || ' days')::interval)::date as deadline,
-                CASE 
-                    WHEN CURRENT_DATE > (ud.created_at + (COALESCE(ti2.due, 3) || ' days')::interval)::date 
-                    THEN TRUE 
-                    ELSE FALSE 
-                END as is_overdue
-            FROM unchecked_descriptions ud
-            JOIN training_info ti ON ud.training_course = ti.training_course
-            LEFT JOIN task_items ti2 ON ud.content LIKE ti2.task_name || '%에 대한 미체크 사유'  -- LIKE 연산자 사용
-            WHERE ud.resolved = FALSE  
-            ORDER BY ud.created_at DESC;
-        """
-        )
-        unchecked_items = cursor.fetchall()
-
-        # 디버깅을 위한 로깅 추가
-        logging.info(f"Found {len(unchecked_items)} unchecked items")
-        for item in unchecked_items:
-            logging.info(f"Item content: {item[1]}, due days: {item[7]}")
-
-        cursor.close()
-        conn.close()
-
-        return (
-            jsonify(
-                {
-                    "success": True,
-                    "data": [
-                        {
-                            "id": row[0],
-                            "content": row[1],
-                            "action_plan": row[2],
-                            "training_course": row[3],
-                            "dept": row[4],
-                            "created_at": row[5],
-                            "resolved": row[6],
-                            "due_days": row[7],
-                            "deadline": row[8],
-                            "is_overdue": row[9],
-                        }
-                        for row in unchecked_items
-                    ],
-                }
-            ),
-            200,
-        )
+        return jsonify({"success": True, "data": unchecked_items}), 200
+        
     except Exception as e:
-        logging.error("Error retrieving unchecked descriptions", exc_info=True)
+        logger.error("Error retrieving unchecked descriptions", exc_info=True)
         return (
             jsonify(
                 {
@@ -331,20 +316,24 @@ def save_unchecked_description():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO unchecked_descriptions (content, action_plan, training_course, created_at, resolved)
-            VALUES (%s, %s, %s, NOW(), FALSE)
-        """,
-            (description, action_plan, training_course),
-        )
-
-        conn.commit()
-        cursor.close()
-        conn.close()
+        session = get_db_session()
+        try:
+            unchecked_description = UncheckedDescription(
+                content=description,
+                action_plan=action_plan,
+                training_course=training_course,
+                resolved=False,
+            )
+            
+            session.add(unchecked_description)
+            session.commit()
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"미체크 항목 저장 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "서버 오류 발생"}), 500
+        finally:
+            session.close()
 
         return (
             jsonify(
@@ -357,7 +346,7 @@ def save_unchecked_description():
         )
 
     except Exception as e:
-        logging.error("Error saving unchecked description", exc_info=True)
+        logger.error("Error saving unchecked description", exc_info=True)
         return jsonify({"success": False, "message": "서버 오류 발생"}), 500
 
 
@@ -406,19 +395,26 @@ def add_unchecked_comment():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO unchecked_comments (unchecked_id, comment, created_at) VALUES (%s, %s, NOW())",
-            (unchecked_id, comment),
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
+        session = get_db_session()
+        try:
+            unchecked_comment = UncheckedComment(
+                unchecked_id=unchecked_id,
+                comment=comment,
+            )
+            
+            session.add(unchecked_comment)
+            session.commit()
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"댓글 저장 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "댓글 저장 실패"}), 500
+        finally:
+            session.close()
 
         return jsonify({"success": True, "message": "댓글이 저장되었습니다."}), 201
     except Exception as e:
-        logging.error("Error saving unchecked comment", exc_info=True)
+        logger.error("Error saving unchecked comment", exc_info=True)
         return jsonify({"success": False, "message": "댓글 저장 실패"}), 500
 
 
@@ -458,22 +454,31 @@ def resolve_unchecked_description():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE unchecked_descriptions SET resolved = TRUE WHERE id = %s",
-            (unchecked_id,),
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
+        session = get_db_session()
+        try:
+            unchecked_item = session.query(UncheckedDescription).filter(
+                UncheckedDescription.id == unchecked_id
+            ).first()
+            
+            if not unchecked_item:
+                return jsonify({"success": False, "message": "미체크 항목을 찾을 수 없습니다."}), 404
+                
+            unchecked_item.resolved = True
+            session.commit()
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"미체크 항목 해결 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "미체크 항목 해결 실패"}), 500
+        finally:
+            session.close()
 
         return (
             jsonify({"success": True, "message": "미체크 항목이 해결되었습니다."}),
             200,
         )
     except Exception as e:
-        logging.error("Error resolving unchecked description", exc_info=True)
+        logger.error("Error resolving unchecked description", exc_info=True)
         return jsonify({"success": False, "message": "미체크 항목 해결 실패"}), 500
 
 
@@ -507,28 +512,26 @@ def get_unchecked_comments():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, comment, created_at FROM unchecked_comments WHERE unchecked_id = %s ORDER BY created_at ASC",
-            (unchecked_id,),
-        )
-        comments = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        return (
-            jsonify(
+        session = get_db_session()
+        try:
+            comments_query = session.query(UncheckedComment).filter(
+                UncheckedComment.unchecked_id == unchecked_id
+            ).order_by(UncheckedComment.created_at.asc())
+            
+            comments = [
                 {
-                    "success": True,
-                    "data": [
-                        {"id": row[0], "comment": row[1], "created_at": row[2]}
-                        for row in comments
-                    ],
+                    "id": comment.id,
+                    "comment": comment.comment,
+                    "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S")
                 }
-            ),
-            200,
-        )
+                for comment in comments_query.all()
+            ]
+            
+            return jsonify({"success": True, "data": comments}), 200
+            
+        finally:
+            session.close()
+            
     except Exception as e:
-        logging.error("Error retrieving unchecked comments", exc_info=True)
+        logger.error("Error retrieving unchecked comments", exc_info=True)
         return jsonify({"success": False, "message": "미체크 항목 댓글 조회 실패"}), 500
