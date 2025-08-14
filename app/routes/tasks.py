@@ -1,9 +1,11 @@
 from flask import Blueprint, request, jsonify
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
-from app.models.db import get_db_connection
+from app.models.db import get_db_session
+from app.models.models import TaskItem, TaskChecklist
 
 tasks_bp = Blueprint("tasks", __name__)
+logger = logging.getLogger(__name__)
 
 
 @tasks_bp.route("/tasks", methods=["GET"])
@@ -29,40 +31,31 @@ def get_tasks():
     try:
         task_category = request.args.get("task_category")  # 선택적 필터링
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
 
-        # guide 컬럼 추가
-        query = (
-            "SELECT id, task_name, task_period, task_category, guide FROM task_items"
-        )
-        params = []
+        # ORM을 사용하여 업무 조회
+        tasks_query = session.query(TaskItem).order_by(TaskItem.id.asc())
 
         if task_category:
-            query += " WHERE task_category = %s"
-            params.append(task_category)
+            tasks_query = tasks_query.filter(TaskItem.task_category == task_category)
 
-        query += " ORDER BY id ASC"
-
-        cursor.execute(query, tuple(params))
-
-        tasks = [
-            {
-                "id": row[0],
-                "task_name": row[1],
-                "task_period": row[2],
-                "task_category": row[3],
-                "guide": row[4] if row[4] else "업무 가이드 없음",  # NULL 값 기본 처리
+        tasks = []
+        for task in tasks_query.all():
+            task_dict = {
+                "id": task.id,
+                "task_name": task.task_name,
+                "task_period": task.task_period,
+                "task_category": task.task_category,
+                "guide": task.guide if task.guide else "업무 가이드 없음",
+                "due": task.due,
             }
-            for row in cursor.fetchall()
-        ]
+            tasks.append(task_dict)
 
-        cursor.close()
-        conn.close()
+        session.close()
 
         return jsonify({"success": True, "data": tasks}), 200
     except Exception as e:
-        logging.error("Error retrieving tasks", exc_info=True)
+        logger.error("Error retrieving tasks", exc_info=True)
         return jsonify({"success": False, "message": "Failed to retrieve tasks"}), 500
 
 
@@ -122,62 +115,55 @@ def save_tasks():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
+        try:
+            # 현재 날짜 가져오기 (시간 제외)
+            current_date = datetime.now().date()
 
-        # 현재 날짜 가져오기 (시간 제외)
-        current_date = datetime.now().date()
+            for update in updates:
+                task_name = update.get("task_name")
+                is_checked = update.get("is_checked", False)
 
-        for update in updates:
-            task_name = update.get("task_name")
-            is_checked = update.get("is_checked", False)
+                # task_id 찾기
+                task = session.query(TaskItem).filter(TaskItem.task_name == task_name).first()
+                if not task:
+                    continue
 
-            # task_id 찾기
-            cursor.execute(
-                "SELECT id FROM task_items WHERE task_name = %s", (task_name,)
-            )
-            task_item = cursor.fetchone()
-            if not task_item:
-                continue
-            task_id = task_item[0]
-
-            # 동일 날짜의 기존 데이터 확인 (DATE 함수 사용하여 시간 제외)
-            cursor.execute(
-                """
-                SELECT id 
-                FROM task_checklist 
-                WHERE task_id = %s 
-                AND training_course = %s 
-                AND DATE(checked_date)::date = %s::date
-            """,
-                (task_id, training_course, current_date),
-            )
-
-            existing_record = cursor.fetchone()
-
-            if existing_record:
-                # 기존 데이터가 있으면 업데이트
-                cursor.execute(
-                    """
-                    UPDATE task_checklist 
-                    SET is_checked = %s, checked_date = NOW(), username = %s
-                    WHERE id = %s
-                """,
-                    (is_checked, username, existing_record[0]),
-                )
-            else:
-                # 기존 데이터가 없으면 새로 삽입
-                cursor.execute(
-                    """
-                    INSERT INTO task_checklist (task_id, training_course, is_checked, checked_date, username)
-                    VALUES (%s, %s, %s, NOW(), %s)
-                """,
-                    (task_id, training_course, is_checked, username),
+                # 동일 날짜의 기존 데이터 확인
+                existing_record = (
+                    session.query(TaskChecklist)
+                    .filter(
+                        TaskChecklist.task_id == task.id,
+                        TaskChecklist.training_course == training_course,
+                        TaskChecklist.checked_date >= current_date,
+                        TaskChecklist.checked_date < current_date + timedelta(days=1),
+                    )
+                    .first()
                 )
 
-        conn.commit()
-        cursor.close()
-        conn.close()
+                if existing_record:
+                    # 기존 데이터가 있으면 업데이트
+                    existing_record.is_checked = is_checked
+                    existing_record.checked_date = datetime.now()
+                    existing_record.username = username
+                else:
+                    # 기존 데이터가 없으면 새로 삽입
+                    checklist = TaskChecklist(
+                        task_id=task.id,
+                        training_course=training_course,
+                        is_checked=is_checked,
+                        username=username,
+                    )
+                    session.add(checklist)
+
+            session.commit()
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"체크리스트 저장 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "체크리스트 저장 실패"}), 500
+        finally:
+            session.close()
 
         return (
             jsonify(
@@ -190,7 +176,7 @@ def save_tasks():
         )
 
     except Exception as e:
-        logging.error("체크리스트 저장 중 오류 발생", exc_info=True)
+        logger.error("체크리스트 저장 중 오류 발생", exc_info=True)
         return jsonify({"success": False, "message": "체크리스트 저장 실패"}), 500
 
 
@@ -254,59 +240,50 @@ def update_tasks():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
+        try:
+            updated_count = 0
+            not_found_items = []
 
-        updated_count = 0
-        not_found_items = []
+            for update in updates:
+                task_name = update.get("task_name")
+                is_checked = update.get("is_checked", False)
 
-        for update in updates:
-            task_name = update.get("task_name")
-            is_checked = update.get("is_checked", False)
+                # task_id 찾기
+                task = session.query(TaskItem).filter(TaskItem.task_name == task_name).first()
+                if not task:
+                    not_found_items.append(task_name)
+                    continue
 
-            # task_id 찾기
-            cursor.execute(
-                "SELECT id FROM task_items WHERE task_name = %s", (task_name,)
-            )
-            task_item = cursor.fetchone()
-            if not task_item:
-                not_found_items.append(task_name)
-                continue
-
-            task_id = task_item[0]
-
-            # 당일 날짜의 기존 데이터 확인
-            cursor.execute(
-                """
-                SELECT id 
-                FROM task_checklist 
-                WHERE task_id = %s 
-                AND training_course = %s 
-                AND DATE(checked_date)::date = %s::date
-            """,
-                (task_id, training_course, today),
-            )
-
-            existing_record = cursor.fetchone()
-
-            if existing_record:
-                # 기존 데이터가 있으면 업데이트
-                cursor.execute(
-                    """
-                    UPDATE task_checklist 
-                    SET is_checked = %s, checked_date = NOW()
-                    WHERE id = %s
-                """,
-                    (is_checked, existing_record[0]),
+                # 당일 날짜의 기존 데이터 확인
+                existing_record = (
+                    session.query(TaskChecklist)
+                    .filter(
+                        TaskChecklist.task_id == task.id,
+                        TaskChecklist.training_course == training_course,
+                        TaskChecklist.checked_date >= today,
+                        TaskChecklist.checked_date < today + timedelta(days=1),
+                    )
+                    .first()
                 )
-                updated_count += 1
-            else:
-                # 업데이트할 데이터가 없음
-                not_found_items.append(task_name)
 
-        conn.commit()
-        cursor.close()
-        conn.close()
+                if existing_record:
+                    # 기존 데이터가 있으면 업데이트
+                    existing_record.is_checked = is_checked
+                    existing_record.checked_date = datetime.now()
+                    updated_count += 1
+                else:
+                    # 업데이트할 데이터가 없음
+                    not_found_items.append(task_name)
+
+            session.commit()
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"체크리스트 업데이트 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "체크리스트 업데이트 실패"}), 500
+        finally:
+            session.close()
 
         if updated_count == 0:
             return (
@@ -335,7 +312,7 @@ def update_tasks():
         return jsonify(response), 200
 
     except Exception as e:
-        logging.error("체크리스트 업데이트 중 오류 발생", exc_info=True)
+        logger.error("체크리스트 업데이트 중 오류 발생", exc_info=True)
         return jsonify({"success": False, "message": "체크리스트 업데이트 실패"}), 500
 
 
@@ -354,39 +331,31 @@ def get_irregular_tasks():
         description: 비정기 업무 조회 실패
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
+        
+        # 비정기 업무는 UncheckedDescription 모델을 사용
+        from app.models.models import UncheckedDescription
+        
+        # 가장 최근 상태만 조회 (resolved=False인 항목들)
+        tasks_query = session.query(UncheckedDescription).filter(
+            UncheckedDescription.resolved == False
+        ).order_by(UncheckedDescription.created_at.desc())
+        
+        tasks = []
+        for task in tasks_query.all():
+            tasks.append({
+                "id": task.id,
+                "task_name": task.content,
+                "is_checked": task.resolved,
+                "checked_date": task.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            })
+        
+        session.close()
 
-        cursor.execute(
-            """
-            SELECT DISTINCT ON (task_name) id, task_name, is_checked, checked_date
-            FROM irregular_tasks
-            ORDER BY task_name, checked_date DESC
-        """
-        )
-        tasks = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        return (
-            jsonify(
-                {
-                    "success": True,
-                    "data": [
-                        {
-                            "id": t[0],
-                            "task_name": t[1],
-                            "is_checked": t[2],
-                            "checked_date": t[3],
-                        }
-                        for t in tasks
-                    ],
-                }
-            ),
-            200,
-        )
+        return jsonify({"success": True, "data": tasks}), 200
+        
     except Exception as e:
-        logging.error("비정기 업무 조회 오류", exc_info=True)
+        logger.error("비정기 업무 조회 오류", exc_info=True)
         return jsonify({"success": False, "message": "비정기 업무 조회 실패"}), 500
 
 
@@ -432,23 +401,30 @@ def save_irregular_tasks():
         if not updates or not training_course:
             return jsonify({"success": False, "message": "No data provided"}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
+        try:
+            from app.models.models import UncheckedDescription
+            
+            for update in updates:
+                task_name = update.get("task_name")
+                is_checked = update.get("is_checked")
+                
+                # 비정기 업무 저장
+                irregular_task = UncheckedDescription(
+                    content=task_name,
+                    training_course=training_course,
+                    resolved=is_checked,
+                )
+                session.add(irregular_task)
 
-        for update in updates:
-            task_name = update.get("task_name")
-            is_checked = update.get("is_checked")
-            cursor.execute(
-                """
-                INSERT INTO irregular_tasks (task_name, is_checked, checked_date, training_course)
-                VALUES (%s, %s, NOW(), %s)
-            """,
-                (task_name, is_checked, training_course),
-            )
+            session.commit()
 
-        conn.commit()
-        cursor.close()
-        conn.close()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"비정기 업무 체크리스트 저장 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "비정기 업무 체크리스트 저장 실패"}), 500
+        finally:
+            session.close()
 
         return (
             jsonify(
@@ -457,7 +433,7 @@ def save_irregular_tasks():
             201,
         )
     except Exception as e:
-        logging.error("비정기 업무 체크리스트 저장 오류", exc_info=True)
+        logger.error("비정기 업무 체크리스트 저장 오류", exc_info=True)
         return (
             jsonify({"success": False, "message": "비정기 업무 체크리스트 저장 실패"}),
             500,
