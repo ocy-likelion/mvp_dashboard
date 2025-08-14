@@ -31,7 +31,18 @@ target_metadata = Base.metadata
 
 def get_url():
     """데이터베이스 URL 반환"""
-    return os.getenv("DATABASE_URL")
+    # 1. 환경변수에서 직접 가져오기
+    database_url = os.getenv("DATABASE_URL")
+    
+    # 2. 환경변수가 없으면 Flask config에서 가져오기
+    if not database_url:
+        try:
+            from app.config import SQLALCHEMY_DATABASE_URI
+            database_url = SQLALCHEMY_DATABASE_URI
+        except ImportError:
+            pass
+    
+    return database_url
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
