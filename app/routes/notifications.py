@@ -1,12 +1,14 @@
 # app/routes/notifications.py
 from flask import Blueprint, request, jsonify
 from datetime import datetime
-from app.models.db import get_db_connection
+from app.models.db import get_db_session
+from app.models.models import UserLastCheck, Notice, Issue, IssueComment
 from app.utils.notifications import SlackNotifier
 import logging
 import requests
 
 notifications_bp = Blueprint("notifications", __name__)
+logger = logging.getLogger(__name__)
 slack_notifier = SlackNotifier()
 
 
@@ -36,95 +38,83 @@ def get_unread_count():
         if not username:
             return jsonify({"success": False, "message": "사용자명이 필요합니다."}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
+        try:
+            # 사용자의 마지막 확인 시간 조회
+            last_check = session.query(UserLastCheck).filter(
+                UserLastCheck.username == username
+            ).first()
+            
+            if not last_check:
+                # 첫 로그인인 경우 현재 시간으로 초기화
+                last_check = UserLastCheck(
+                    username=username,
+                    last_notice_check=datetime.now(),
+                    last_issue_check=datetime.now(),
+                    last_comment_check=datetime.now(),
+                )
+                session.add(last_check)
+                session.commit()
+                return (
+                    jsonify(
+                        {
+                            "success": True,
+                            "data": {"new_notices": 0, "new_issues": 0, "new_comments": 0},
+                        }
+                    ),
+                    200,
+                )
 
-        # 사용자의 마지막 확인 시간 조회
-        cursor.execute(
-            """
-            SELECT last_notice_check, last_issue_check, last_comment_check 
-            FROM user_last_checks 
-            WHERE username = %s
-        """,
-            (username,),
-        )
+            # 새로운 항목 개수 조회
+            new_notices = session.query(Notice).filter(
+                Notice.date > last_check.last_notice_check,
+                Notice.is_deleted == False
+            ).count()
+            
+            new_issues = session.query(Issue).filter(
+                Issue.created_at > last_check.last_issue_check
+            ).count()
+            
+            new_comments = session.query(IssueComment).filter(
+                IssueComment.created_at > last_check.last_comment_check
+            ).count()
 
-        last_check = cursor.fetchone()
-        if not last_check:
-            # 첫 로그인인 경우 현재 시간으로 초기화
-            cursor.execute(
-                """
-                INSERT INTO user_last_checks 
-                (username, last_notice_check, last_issue_check, last_comment_check)
-                VALUES (%s, NOW(), NOW(), NOW())
-            """,
-                (username,),
-            )
-            conn.commit()
+            # 현재 시간으로 마지막 확인 시간 업데이트
+            last_check.last_notice_check = datetime.now()
+            last_check.last_issue_check = datetime.now()
+            last_check.last_comment_check = datetime.now()
+            session.commit()
+
             return (
                 jsonify(
                     {
                         "success": True,
-                        "data": {"new_notices": 0, "new_issues": 0, "new_comments": 0},
+                        "data": {
+                            "new_notices": new_notices,
+                            "new_issues": new_issues,
+                            "new_comments": new_comments,
+                        },
                     }
                 ),
                 200,
             )
 
-        # 새로운 항목 개수 조회
-        last_notice_check, last_issue_check, last_comment_check = last_check
-
-        cursor.execute(
-            """
-            SELECT 
-                (SELECT COUNT(*) FROM notices WHERE date > %s) as new_notices,
-                (SELECT COUNT(*) FROM issues WHERE created_at > %s) as new_issues,
-                (SELECT COUNT(*) FROM issue_comments WHERE created_at > %s) as new_comments
-        """,
-            (last_notice_check, last_issue_check, last_comment_check),
-        )
-
-        counts = cursor.fetchone()
-
-        # 현재 시간으로 마지막 확인 시간 업데이트
-        cursor.execute(
-            """
-            UPDATE user_last_checks 
-            SET last_notice_check = NOW(),
-                last_issue_check = NOW(),
-                last_comment_check = NOW()
-            WHERE username = %s
-        """,
-            (username,),
-        )
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return (
-            jsonify(
-                {
-                    "success": True,
-                    "data": {
-                        "new_notices": counts[0],
-                        "new_issues": counts[1],
-                        "new_comments": counts[2],
-                    },
-                }
-            ),
-            200,
-        )
+        except Exception as e:
+            session.rollback()
+            logger.error(f"알림 개수 조회 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "알림 개수 조회 실패"}), 500
+        finally:
+            session.close()
 
     except Exception as e:
-        logging.error("알림 개수 조회 오류", exc_info=True)
+        logger.error("알림 개수 조회 오류", exc_info=True)
         return jsonify({"success": False, "message": "알림 개수 조회 실패"}), 500
 
 
 def send_notification(self, message):
     if not self.webhook_url:
-        logging.error("SLACK_WEBHOOK_URL이 설정되지 않았습니다.")
-        logging.error(
+        logger.error("SLACK_WEBHOOK_URL이 설정되지 않았습니다.")
+        logger.error(
             f"현재 환경변수: WEBHOOK_URL={self.webhook_url}, CHANNEL={self.channel}"
         )
         return False
@@ -137,18 +127,18 @@ def send_notification(self, message):
             "icon_emoji": ":lion_face:",
         }
 
-        logging.info(f"Slack webhook 호출 시도 - Channel: {self.channel}")
+        logger.info(f"Slack webhook 호출 시도 - Channel: {self.channel}")
         response = requests.post(self.webhook_url, json=payload)
-        logging.info(f"Slack 응답 코드: {response.status_code}")
-        logging.info(f"Slack 응답 내용: {response.text}")
+        logger.info(f"Slack 응답 코드: {response.status_code}")
+        logger.info(f"Slack 응답 내용: {response.text}")
 
         if response.status_code == 200:
             return True
         else:
-            logging.error(
+            logger.error(
                 f"Slack 알림 전송 실패: {response.status_code}, {response.text}"
             )
             return False
     except Exception as e:
-        logging.error(f"Slack 알림 전송 중 오류 발생: {str(e)}", exc_info=True)
+        logger.error(f"Slack 알림 전송 중 오류 발생: {str(e)}", exc_info=True)
         return False
