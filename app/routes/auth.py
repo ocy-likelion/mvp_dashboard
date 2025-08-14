@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, session
 import logging
-from app.models.db import get_db_connection
+from app.models.db import get_db_session
+from app.models.models import User
 from app.utils.password import (
     hash_password,
     verify_password,
@@ -8,6 +9,7 @@ from app.utils.password import (
 )
 
 auth_bp = Blueprint("auth", __name__)
+logger = logging.getLogger(__name__)
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -52,34 +54,33 @@ def login():
         )
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, password FROM users WHERE username = %s", (username,)
-        )
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        session_db = get_db_session()
+        try:
+            # 사용자 조회
+            user = session_db.query(User).filter(User.username == username).first()
 
-        if not user:
-            return (
-                jsonify(
-                    {"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}
-                ),
-                401,
-            )
+            if not user:
+                return (
+                    jsonify(
+                        {"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}
+                    ),
+                    401,
+                )
 
-        # 비밀번호 검증 (bcrypt 사용)
-        if not verify_password(password, user[1]):
-            return (
-                jsonify(
-                    {"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}
-                ),
-                401,
-            )
+            # 비밀번호 검증 (bcrypt 사용)
+            if not verify_password(password, user.password):
+                return (
+                    jsonify(
+                        {"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}
+                    ),
+                    401,
+                )
+
+        finally:
+            session_db.close()
 
         session.permanent = True  # 세션을 영구적으로 설정
-        user_data = {"id": user[0], "username": username}
+        user_data = {"id": user.id, "username": username}
         session["user"] = user_data
 
         return (
@@ -94,7 +95,7 @@ def login():
         )
 
     except Exception as e:
-        logging.error("로그인 오류", exc_info=True)
+        logger.error("로그인 오류", exc_info=True)
         return jsonify({"success": False, "message": "서버 오류 발생"}), 500
 
 
@@ -198,73 +199,53 @@ def change_password():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session_db = get_db_session()
+        try:
+            # 현재 비밀번호 확인
+            user = session_db.query(User).filter(User.username == username).first()
 
-        # 현재 비밀번호 확인
-        cursor.execute(
-            "SELECT id, password FROM users WHERE username = %s",
-            (username,),
-        )
-        user = cursor.fetchone()
+            if not user:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "사용자명 또는 현재 비밀번호가 일치하지 않습니다.",
+                        }
+                    ),
+                    401,
+                )
 
-        if not user:
-            cursor.close()
-            conn.close()
+            # 현재 비밀번호 검증 (bcrypt 사용)
+            if not verify_password(current_password, user.password):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "사용자명 또는 현재 비밀번호가 일치하지 않습니다.",
+                        }
+                    ),
+                    401,
+                )
+
+            # 새 비밀번호 해싱
+            hashed_new_password = hash_password(new_password)
+
+            # 비밀번호 업데이트
+            user.password = hashed_new_password
+            session_db.commit()
+
             return (
                 jsonify(
-                    {
-                        "success": False,
-                        "message": "사용자명 또는 현재 비밀번호가 일치하지 않습니다.",
-                    }
+                    {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
                 ),
-                401,
+                200,
             )
 
-        # 현재 비밀번호 검증 (bcrypt 사용)
-        if not verify_password(current_password, user[1]):
-            cursor.close()
-            conn.close()
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "사용자명 또는 현재 비밀번호가 일치하지 않습니다.",
-                    }
-                ),
-                401,
-            )
-
-        # 새 비밀번호 해싱
-        hashed_new_password = hash_password(new_password)
-
-        # 비밀번호 업데이트
-        cursor.execute(
-            "UPDATE users SET password = %s WHERE id = %s",
-            (hashed_new_password, user[0]),
-        )
-
-        if cursor.rowcount == 0:
-            cursor.close()
-            conn.close()
-            return (
-                jsonify({"success": False, "message": "비밀번호 변경에 실패했습니다."}),
-                500,
-            )
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return (
-            jsonify(
-                {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
-            ),
-            200,
-        )
+        finally:
+            session_db.close()
 
     except Exception as e:
-        logging.error("비밀번호 변경 오류", exc_info=True)
+        logger.error("비밀번호 변경 오류", exc_info=True)
         return (
             jsonify(
                 {"success": False, "message": "비밀번호 변경 중 오류가 발생했습니다."}
