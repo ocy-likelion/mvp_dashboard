@@ -2,9 +2,12 @@ from flask import Blueprint, request, jsonify, send_file
 import io
 import pandas as pd
 import logging
-from app.models.db import get_db_connection
+from app.models.db import get_db_session
+from app.models.models import Attendance
+from datetime import datetime
 
 attendance_bp = Blueprint("attendance", __name__)
+logger = logging.getLogger(__name__)
 
 
 @attendance_bp.route("/attendance", methods=["GET"])
@@ -28,14 +31,26 @@ def get_attendance():
     """
     try:
         format_type = request.args.get("format", "json")  # 기본값 JSON
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, date, instructor, training_course, check_in, check_out, daily_log FROM attendance ORDER BY date DESC"
-        )
-        attendance_records = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        
+        session = get_db_session()
+        attendance_query = session.query(Attendance).order_by(Attendance.date.desc())
+        attendance_records = attendance_query.all()
+        
+        # 데이터 변환
+        records_data = [
+            (
+                record.id,
+                record.date.strftime("%Y-%m-%d") if record.date else None,
+                record.instructor,
+                record.training_course,
+                record.check_in_time.strftime("%H:%M") if record.check_in_time else None,
+                record.check_out_time.strftime("%H:%M") if record.check_out_time else None,
+                record.daily_log,
+            )
+            for record in attendance_records
+        ]
+        
+        session.close()
 
         columns = [
             "ID",
@@ -46,7 +61,7 @@ def get_attendance():
             "퇴근 시간",
             "일지 작성 완료",
         ]
-        df = pd.DataFrame(attendance_records, columns=columns)
+        df = pd.DataFrame(records_data, columns=columns)
 
         # JSON 응답 (기본값)
         if format_type == "json":
@@ -69,7 +84,7 @@ def get_attendance():
             return jsonify({"success": False, "message": "잘못된 포맷 요청"}), 400
 
     except Exception as e:
-        logging.error("출퇴근 기록 조회 오류", exc_info=True)
+        logger.error("출퇴근 기록 조회 오류", exc_info=True)
         return jsonify({"success": False, "message": "출퇴근 기록 조회 실패"}), 500
 
 
@@ -150,28 +165,36 @@ def save_attendance():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO attendance (date, instructor, instructor_name, training_course, check_in, check_out, daily_log)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """,
-            (
-                date,
-                instructor,
-                instructor_name,
-                training_course,
-                check_in,
-                check_out,
-                daily_log,
-            ),
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
+        session = get_db_session()
+        try:
+            # 시간 문자열을 Time 객체로 변환
+            check_in_time = datetime.strptime(check_in, "%H:%M").time() if check_in else None
+            check_out_time = datetime.strptime(check_out, "%H:%M").time() if check_out else None
+            
+            # 날짜 문자열을 Date 객체로 변환
+            attendance_date = datetime.strptime(date, "%Y-%m-%d").date() if date else None
+            
+            attendance = Attendance(
+                date=attendance_date,
+                instructor=instructor,
+                instructor_name=instructor_name,
+                training_course=training_course,
+                check_in_time=check_in_time,
+                check_out_time=check_out_time,
+                daily_log=daily_log,
+            )
+            
+            session.add(attendance)
+            session.commit()
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"출퇴근 기록 저장 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "출퇴근 기록 저장 실패"}), 500
+        finally:
+            session.close()
 
         return jsonify({"success": True, "message": "Attendance saved!"}), 201
     except Exception as e:
-        logging.error("Error saving attendance", exc_info=True)
+        logger.error("Error saving attendance", exc_info=True)
         return jsonify({"success": False, "message": "Failed to save attendance"}), 500
