@@ -2,7 +2,8 @@ from flask import Blueprint, request, jsonify, send_file
 import io
 import pandas as pd
 import logging
-from app.models.db import get_db_connection
+from app.models.db import get_db_session
+from app.models.models import Issue, IssueComment
 from app.utils.notifications import SlackNotifier
 from datetime import datetime
 
@@ -76,34 +77,38 @@ def create_issue():
             "username": data["username"],
             "created_by": data["username"],  # username과 동일하게 설정
             "date": data.get("date"),
-            "created_at": datetime.now().isoformat(),
             "resolved": False,  # 기본값 False
         }
 
-        # 3. 데이터베이스 저장
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # 3. 데이터베이스 저장 - ORM 사용
+        session = get_db_session()
+        try:
+            # 이슈 생성
+            issue = Issue(
+                content=issue_data["content"],
+                training_course=issue_data["training_course"],
+                username=issue_data["username"],
+                created_by=issue_data["created_by"],
+                date=issue_data["date"],
+                resolved=False,
+            )
 
-        cursor.execute(
-            """
-            INSERT INTO issues 
-            (content, training_course, username, created_by, date, created_at, resolved)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """,
-            (
-                issue_data["content"],
-                issue_data["training_course"],
-                issue_data["username"],
-                issue_data["created_by"],
-                issue_data["date"],
-                issue_data["created_at"],
-                issue_data["resolved"],
-            ),
-        )
+            session.add(issue)
+            session.commit()
 
-        issue_id = cursor.fetchone()[0]
-        conn.commit()
+            issue_id = issue.id
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"이슈 생성 중 오류: {str(e)}")
+            return (
+                jsonify(
+                    {"success": False, "message": "이슈 생성 중 오류가 발생했습니다."}
+                ),
+                500,
+            )
+        finally:
+            session.close()
 
         # 4. Slack 알림 전송
         try:
@@ -136,11 +141,6 @@ def create_issue():
             jsonify({"success": False, "message": "이슈 생성 중 오류가 발생했습니다."}),
             500,
         )
-    finally:
-        if "cursor" in locals():
-            cursor.close()
-        if "conn" in locals():
-            conn.close()
 
 
 @issues_bp.route("/issues", methods=["GET"])
@@ -158,52 +158,54 @@ def get_issues():
         description: 이슈 목록 조회 실패
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT training_course, json_agg(json_build_object(
-                'id', i.id, 
-                'content', i.content, 
-                'date', i.date, 
-                'created_at', i.created_at,
-                'created_by', COALESCE(i.created_by, '작성자 없음'),
-                'resolved', i.resolved,
-                'comments', (
-                    SELECT json_agg(json_build_object(
-                        'id', ic.id, 
-                        'comment', ic.comment,
-                        'created_at', ic.created_at,
-                        'created_by', COALESCE(ic.created_by, '작성자 없음')
-                    )) FROM issue_comments ic WHERE ic.issue_id = i.id
-                )
-            )) AS issues
-            FROM issues i
-            WHERE i.resolved = FALSE  
-            GROUP BY training_course
-            ORDER BY MIN(i.created_at) DESC;
-        """
-        )
-        issues_grouped = cursor.fetchall()
-
-        cursor.close()
-        conn.close()
-
-        return (
-            jsonify(
+        session = get_db_session()
+        
+        # ORM을 사용하여 해결되지 않은 이슈 조회
+        issues_query = session.query(Issue).filter(Issue.resolved == False).order_by(Issue.created_at.desc())
+        issues = issues_query.all()
+        
+        # 교육과정별로 그룹화
+        issues_grouped = {}
+        for issue in issues:
+            course = issue.training_course
+            if course not in issues_grouped:
+                issues_grouped[course] = []
+            
+            # 댓글 조회
+            comments = session.query(IssueComment).filter(IssueComment.issue_id == issue.id).all()
+            comments_data = [
                 {
-                    "success": True,
-                    "data": [
-                        {"training_course": row[0], "issues": row[1]}
-                        for row in issues_grouped
-                    ],
+                    'id': comment.id,
+                    'comment': comment.comment,
+                    'created_at': comment.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    'created_by': comment.created_by or '작성자 없음'
                 }
-            ),
-            200,
-        )
+                for comment in comments
+            ]
+            
+            issue_data = {
+                'id': issue.id,
+                'content': issue.content,
+                'date': issue.date.strftime("%Y-%m-%d") if issue.date else None,
+                'created_at': issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                'created_by': issue.created_by or '작성자 없음',
+                'resolved': issue.resolved,
+                'comments': comments_data
+            }
+            issues_grouped[course].append(issue_data)
+        
+        session.close()
+        
+        # 응답 형식 변환
+        response_data = [
+            {"training_course": course, "issues": issues_list}
+            for course, issues_list in issues_grouped.items()
+        ]
+        
+        return jsonify({"success": True, "data": response_data}), 200
+        
     except Exception as e:
-        logging.error("Error retrieving issues", exc_info=True)
+        logger.error("Error retrieving issues", exc_info=True)
         return (
             jsonify({"success": False, "message": "이슈 목록을 불러오는 중 오류 발생"}),
             500,
@@ -260,47 +262,37 @@ def add_comment():
                 400,
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
+        try:
+            # 이슈 정보 조회
+            issue = session.query(Issue).filter(Issue.id == issue_id).first()
 
-        # 이슈 정보 조회 시 'issue' 대신 'content' 사용
-        cursor.execute(
-            """
-            SELECT content, training_course FROM issues WHERE id = %s
-        """,
-            (issue_id,),
-        )
-        issue_info = cursor.fetchone()
+            if not issue:
+                return (
+                    jsonify({"success": False, "message": "해당 이슈를 찾을 수 없습니다."}),
+                    404,
+                )
 
-        if not issue_info:
-            cursor.close()
-            conn.close()
-            return (
-                jsonify({"success": False, "message": "해당 이슈를 찾을 수 없습니다."}),
-                404,
+            # 댓글 저장
+            issue_comment = IssueComment(
+                issue_id=issue_id,
+                comment=comment,
+                created_by=created_by,
             )
 
-        # 댓글 저장
-        cursor.execute(
-            """
-            INSERT INTO issue_comments (issue_id, comment, created_by, created_at)
-            VALUES (%s, %s, %s, %s)
-        """,
-            (
-                issue_id,
-                comment,
-                created_by,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            ),
-        )
+            session.add(issue_comment)
+            session.commit()
 
-        conn.commit()
-        cursor.close()
-        conn.close()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"댓글 등록 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "댓글 등록 실패"}), 500
+        finally:
+            session.close()
 
         # 댓글 등록 알림
         notifier = SlackNotifier()
-        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n과정명: {issue_info[1]}\n댓글: {comment}"
+        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n과정명: {issue.training_course}\n댓글: {comment}"
         notifier.send_notification(notification_message, channel_type="comment")
 
         return jsonify({"success": True, "message": "댓글이 등록되었습니다."}), 201
@@ -336,37 +328,31 @@ def get_issue_comments():
         if not issue_id:
             return jsonify({"success": False, "message": "이슈 ID를 입력하세요."}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, comment, created_at, created_by FROM issue_comments WHERE issue_id = %s ORDER BY created_at ASC",
-            (issue_id,),
-        )
-        comments = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        return (
-            jsonify(
+        session = get_db_session()
+        try:
+            comments_query = session.query(IssueComment).filter(
+                IssueComment.issue_id == issue_id
+            ).order_by(IssueComment.created_at.asc())
+            
+            comments = comments_query.all()
+            
+            comments_data = [
                 {
-                    "success": True,
-                    "data": [
-                        {
-                            "id": row[0],
-                            "comment": row[1],
-                            "created_at": row[2],
-                            "created_by": (
-                                row[3] if row[3] else "작성자 없음"
-                            ),  # created_by가 NULL인 경우 처리
-                        }
-                        for row in comments
-                    ],
+                    "id": comment.id,
+                    "comment": comment.comment,
+                    "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "created_by": comment.created_by or "작성자 없음",
                 }
-            ),
-            200,
-        )
+                for comment in comments
+            ]
+            
+            return jsonify({"success": True, "data": comments_data}), 200
+            
+        finally:
+            session.close()
+            
     except Exception as e:
-        logging.error("Error retrieving issue comments", exc_info=True)
+        logger.error("Error retrieving issue comments", exc_info=True)
         return jsonify({"success": False, "message": "댓글 조회 실패"}), 500
 
 
@@ -404,16 +390,25 @@ def resolve_issue():
         if not issue_id:
             return jsonify({"success": False, "message": "이슈 ID가 필요합니다."}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE issues SET resolved = TRUE WHERE id = %s", (issue_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        session = get_db_session()
+        try:
+            issue = session.query(Issue).filter(Issue.id == issue_id).first()
+            if not issue:
+                return jsonify({"success": False, "message": "이슈를 찾을 수 없습니다."}), 404
+                
+            issue.resolved = True
+            session.commit()
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"이슈 해결 중 오류: {str(e)}")
+            return jsonify({"success": False, "message": "이슈 해결 실패"}), 500
+        finally:
+            session.close()
 
         return jsonify({"success": True, "message": "이슈가 해결되었습니다."}), 200
     except Exception as e:
-        logging.error("Error resolving issue", exc_info=True)
+        logger.error("Error resolving issue", exc_info=True)
         return jsonify({"success": False, "message": "이슈 해결 실패"}), 500
 
 
@@ -432,15 +427,22 @@ def download_issues():
         description: 이슈사항 다운로드 실패
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT id, content, date, training_course, created_at, resolved FROM issues"
-        )
-        issues = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        session = get_db_session()
+        
+        issues_query = session.query(Issue).all()
+        issues = [
+            (
+                issue.id,
+                issue.content,
+                issue.date.strftime("%Y-%m-%d") if issue.date else None,
+                issue.training_course,
+                issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                issue.resolved
+            )
+            for issue in issues_query
+        ]
+        
+        session.close()
 
         # DataFrame 생성
         columns = ["ID", "이슈 내용", "날짜", "훈련 과정", "생성일", "해결됨"]
@@ -459,7 +461,7 @@ def download_issues():
             download_name="이슈사항.xlsx",
         )
     except Exception as e:
-        logging.error("이슈사항 다운로드 실패", exc_info=True)
+        logger.error("이슈사항 다운로드 실패", exc_info=True)
         return jsonify({"success": False, "message": "이슈 다운로드 실패"}), 500
 
 
