@@ -1,7 +1,12 @@
 from flask import Blueprint, request, jsonify
 import logging
 from app.models.db import get_db_session
-from app.models.models import TrainingInfo, UncheckedDescription, UncheckedComment, TaskItem
+from app.models.models import (
+    TrainingInfo,
+    UncheckedDescription,
+    UncheckedComment,
+    TaskItem,
+)
 from datetime import datetime, timedelta
 
 training_bp = Blueprint("training", __name__)
@@ -24,19 +29,21 @@ def get_training_courses():
     """
     try:
         session = get_db_session()
-        
+
         # 현재 날짜 기준으로 종료된 지 1주일 이내이거나 아직 진행 중인 과정만 조회
         one_week_ago = datetime.now().date() - timedelta(days=7)
-        courses_query = session.query(TrainingInfo).filter(
-            TrainingInfo.end_date >= one_week_ago
-        ).order_by(TrainingInfo.start_date.desc())
-        
+        courses_query = (
+            session.query(TrainingInfo)
+            .filter(TrainingInfo.end_date >= one_week_ago)
+            .order_by(TrainingInfo.start_date.desc())
+        )
+
         courses = [course.training_course for course in courses_query.all()]
-        
+
         session.close()
 
         return jsonify({"success": True, "data": courses}), 200
-        
+
     except Exception as e:
         logger.error("Error fetching training courses", exc_info=True)
         return (
@@ -121,7 +128,7 @@ def save_training_info():
             # 날짜 문자열을 Date 객체로 변환
             start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
             end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
-            
+
             training_info = TrainingInfo(
                 training_course=training_course,
                 start_date=start_date_obj,
@@ -129,14 +136,17 @@ def save_training_info():
                 dept=dept,
                 manager_name=manager_name,
             )
-            
+
             session.add(training_info)
             session.commit()
-            
+
         except Exception as e:
             session.rollback()
             logger.error(f"훈련 과정 저장 중 오류: {str(e)}")
-            return jsonify({"success": False, "message": "Failed to save training info"}), 500
+            return (
+                jsonify({"success": False, "message": "Failed to save training info"}),
+                500,
+            )
         finally:
             session.close()
 
@@ -164,24 +174,32 @@ def get_training_info():
     """
     try:
         session = get_db_session()
-        
-        courses_query = session.query(TrainingInfo).order_by(TrainingInfo.start_date.desc())
+
+        courses_query = session.query(TrainingInfo).order_by(
+            TrainingInfo.start_date.desc()
+        )
         courses = courses_query.all()
-        
+
         courses_data = [
             {
                 "training_course": course.training_course,
-                "start_date": course.start_date.strftime("%Y-%m-%d") if course.start_date else None,
-                "end_date": course.end_date.strftime("%Y-%m-%d") if course.end_date else None,
+                "start_date": (
+                    course.start_date.strftime("%Y-%m-%d")
+                    if course.start_date
+                    else None
+                ),
+                "end_date": (
+                    course.end_date.strftime("%Y-%m-%d") if course.end_date else None
+                ),
                 "dept": course.dept,
             }
             for course in courses
         ]
-        
+
         session.close()
 
         return jsonify({"success": True, "data": courses_data})
-        
+
     except Exception as e:
         logger.error("Error fetching training info", exc_info=True)
         return (
@@ -205,52 +223,68 @@ def get_unchecked_descriptions():
     """
     try:
         session = get_db_session()
-        
+
         # 미체크 항목 조회 (resolved=False인 항목들)
-        unchecked_query = session.query(UncheckedDescription).filter(
-            UncheckedDescription.resolved == False
-        ).order_by(UncheckedDescription.created_at.desc())
-        
+        unchecked_query = (
+            session.query(UncheckedDescription)
+            .filter(UncheckedDescription.resolved == False)
+            .order_by(UncheckedDescription.created_at.desc())
+        )
+
         unchecked_items = []
         for item in unchecked_query.all():
             # 부서 정보 조회
-            training_info = session.query(TrainingInfo).filter(
-                TrainingInfo.training_course == item.training_course
-            ).first()
+            training_info = (
+                session.query(TrainingInfo)
+                .filter(TrainingInfo.training_course == item.training_course)
+                .first()
+            )
             dept = training_info.dept if training_info else None
-            
+
             # due days 조회 (task_items에서 매칭되는 항목 찾기)
             due_days = 3  # 기본값
             if item.content:
-                task_item = session.query(TaskItem).filter(
-                    TaskItem.task_name.in_([task_name for task_name in session.query(TaskItem.task_name).all()])
-                ).filter(
-                    item.content.like(f"%{TaskItem.task_name}%에 대한 미체크 사유")
-                ).first()
+                task_item = (
+                    session.query(TaskItem)
+                    .filter(
+                        TaskItem.task_name.in_(
+                            [
+                                task_name
+                                for task_name in session.query(TaskItem.task_name).all()
+                            ]
+                        )
+                    )
+                    .filter(
+                        item.content.like(f"%{TaskItem.task_name}%에 대한 미체크 사유")
+                    )
+                    .first()
+                )
                 if task_item:
                     due_days = task_item.due or 3
-            
+
             # 마감일 계산
             deadline = item.created_at.date() + timedelta(days=due_days)
             is_overdue = datetime.now().date() > deadline
-            
-            unchecked_items.append({
-                "id": item.id,
-                "content": item.content,
-                "action_plan": item.action_plan,
-                "training_course": item.training_course,
-                "dept": dept,
-                "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                "resolved": item.resolved,
-                "due_days": due_days,
-                "deadline": deadline.strftime("%Y-%m-%d"),
-                "is_overdue": is_overdue,
-            })
-        
+
+            unchecked_items.append(
+                {
+                    "id": item.id,
+                    "content": item.content,
+                    "action_plan": item.action_plan,
+                    "training_course": item.training_course,
+                    "dept": dept,
+                    "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "resolved": item.resolved,
+                    "due_days": due_days,
+                    "deadline": deadline.strftime("%Y-%m-%d"),
+                    "is_overdue": is_overdue,
+                }
+            )
+
         session.close()
 
         return jsonify({"success": True, "data": unchecked_items}), 200
-        
+
     except Exception as e:
         logger.error("Error retrieving unchecked descriptions", exc_info=True)
         return (
@@ -324,10 +358,10 @@ def save_unchecked_description():
                 training_course=training_course,
                 resolved=False,
             )
-            
+
             session.add(unchecked_description)
             session.commit()
-            
+
         except Exception as e:
             session.rollback()
             logger.error(f"미체크 항목 저장 중 오류: {str(e)}")
@@ -401,10 +435,10 @@ def add_unchecked_comment():
                 unchecked_id=unchecked_id,
                 comment=comment,
             )
-            
+
             session.add(unchecked_comment)
             session.commit()
-            
+
         except Exception as e:
             session.rollback()
             logger.error(f"댓글 저장 중 오류: {str(e)}")
@@ -456,16 +490,23 @@ def resolve_unchecked_description():
 
         session = get_db_session()
         try:
-            unchecked_item = session.query(UncheckedDescription).filter(
-                UncheckedDescription.id == unchecked_id
-            ).first()
-            
+            unchecked_item = (
+                session.query(UncheckedDescription)
+                .filter(UncheckedDescription.id == unchecked_id)
+                .first()
+            )
+
             if not unchecked_item:
-                return jsonify({"success": False, "message": "미체크 항목을 찾을 수 없습니다."}), 404
-                
+                return (
+                    jsonify(
+                        {"success": False, "message": "미체크 항목을 찾을 수 없습니다."}
+                    ),
+                    404,
+                )
+
             unchecked_item.resolved = True
             session.commit()
-            
+
         except Exception as e:
             session.rollback()
             logger.error(f"미체크 항목 해결 중 오류: {str(e)}")
@@ -514,24 +555,26 @@ def get_unchecked_comments():
 
         session = get_db_session()
         try:
-            comments_query = session.query(UncheckedComment).filter(
-                UncheckedComment.unchecked_id == unchecked_id
-            ).order_by(UncheckedComment.created_at.asc())
-            
+            comments_query = (
+                session.query(UncheckedComment)
+                .filter(UncheckedComment.unchecked_id == unchecked_id)
+                .order_by(UncheckedComment.created_at.asc())
+            )
+
             comments = [
                 {
                     "id": comment.id,
                     "comment": comment.comment,
-                    "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                    "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 }
                 for comment in comments_query.all()
             ]
-            
+
             return jsonify({"success": True, "data": comments}), 200
-            
+
         finally:
             session.close()
-            
+
     except Exception as e:
         logger.error("Error retrieving unchecked comments", exc_info=True)
         return jsonify({"success": False, "message": "미체크 항목 댓글 조회 실패"}), 500

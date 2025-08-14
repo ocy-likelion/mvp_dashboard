@@ -41,10 +41,12 @@ def get_unread_count():
         session = get_db_session()
         try:
             # 사용자의 마지막 확인 시간 조회
-            last_check = session.query(UserLastCheck).filter(
-                UserLastCheck.username == username
-            ).first()
-            
+            last_check = (
+                session.query(UserLastCheck)
+                .filter(UserLastCheck.username == username)
+                .first()
+            )
+
             if not last_check:
                 # 첫 로그인인 경우 현재 시간으로 초기화
                 last_check = UserLastCheck(
@@ -59,25 +61,37 @@ def get_unread_count():
                     jsonify(
                         {
                             "success": True,
-                            "data": {"new_notices": 0, "new_issues": 0, "new_comments": 0},
+                            "data": {
+                                "new_notices": 0,
+                                "new_issues": 0,
+                                "new_comments": 0,
+                            },
                         }
                     ),
                     200,
                 )
 
             # 새로운 항목 개수 조회
-            new_notices = session.query(Notice).filter(
-                Notice.date > last_check.last_notice_check,
-                Notice.is_deleted == False
-            ).count()
-            
-            new_issues = session.query(Issue).filter(
-                Issue.created_at > last_check.last_issue_check
-            ).count()
-            
-            new_comments = session.query(IssueComment).filter(
-                IssueComment.created_at > last_check.last_comment_check
-            ).count()
+            new_notices = (
+                session.query(Notice)
+                .filter(
+                    Notice.date > last_check.last_notice_check,
+                    Notice.is_deleted == False,
+                )
+                .count()
+            )
+
+            new_issues = (
+                session.query(Issue)
+                .filter(Issue.created_at > last_check.last_issue_check)
+                .count()
+            )
+
+            new_comments = (
+                session.query(IssueComment)
+                .filter(IssueComment.created_at > last_check.last_comment_check)
+                .count()
+            )
 
             # 현재 시간으로 마지막 확인 시간 업데이트
             last_check.last_notice_check = datetime.now()

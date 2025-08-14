@@ -15,7 +15,9 @@ load_dotenv()
 def run_command(command):
     """명령어 실행"""
     try:
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        result = subprocess.run(
+            command, shell=True, check=True, capture_output=True, text=True
+        )
         print(result.stdout)
         return True
     except subprocess.CalledProcessError as e:
@@ -64,8 +66,12 @@ def main():
     if len(sys.argv) < 2:
         print("사용법:")
         print("  python manage_migrations.py create <message>  - 새 마이그레이션 생성")
-        print("  python manage_migrations.py upgrade           - 데이터베이스 업그레이드")
-        print("  python manage_migrations.py downgrade <rev>   - 데이터베이스 다운그레이드")
+        print(
+            "  python manage_migrations.py upgrade           - 데이터베이스 업그레이드"
+        )
+        print(
+            "  python manage_migrations.py downgrade <rev>   - 데이터베이스 다운그레이드"
+        )
         print("  python manage_migrations.py current           - 현재 상태 확인")
         print("  python manage_migrations.py history           - 히스토리 확인")
         return
@@ -78,27 +84,26 @@ def main():
             return
         message = sys.argv[2]
         create_migration(message)
-    
+
     elif action == "upgrade":
         upgrade_database()
-    
+
     elif action == "downgrade":
         if len(sys.argv) < 3:
             print("❌ 다운그레이드할 리비전을 입력해주세요.")
             return
         revision = sys.argv[2]
         downgrade_database(revision)
-    
+
     elif action == "current":
         show_current()
-    
+
     elif action == "history":
         show_history()
-    
+
     else:
         print(f"❌ 알 수 없는 명령어: {action}")
 
 
 if __name__ == "__main__":
     main()
-

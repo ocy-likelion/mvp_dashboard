@@ -236,7 +236,10 @@ def change_password():
 
             return (
                 jsonify(
-                    {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
+                    {
+                        "success": True,
+                        "message": "비밀번호가 성공적으로 변경되었습니다.",
+                    }
                 ),
                 200,
             )

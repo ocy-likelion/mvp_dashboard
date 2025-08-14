@@ -159,51 +159,59 @@ def get_issues():
     """
     try:
         session = get_db_session()
-        
+
         # ORM을 사용하여 해결되지 않은 이슈 조회
-        issues_query = session.query(Issue).filter(Issue.resolved == False).order_by(Issue.created_at.desc())
+        issues_query = (
+            session.query(Issue)
+            .filter(Issue.resolved == False)
+            .order_by(Issue.created_at.desc())
+        )
         issues = issues_query.all()
-        
+
         # 교육과정별로 그룹화
         issues_grouped = {}
         for issue in issues:
             course = issue.training_course
             if course not in issues_grouped:
                 issues_grouped[course] = []
-            
+
             # 댓글 조회
-            comments = session.query(IssueComment).filter(IssueComment.issue_id == issue.id).all()
+            comments = (
+                session.query(IssueComment)
+                .filter(IssueComment.issue_id == issue.id)
+                .all()
+            )
             comments_data = [
                 {
-                    'id': comment.id,
-                    'comment': comment.comment,
-                    'created_at': comment.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    'created_by': comment.created_by or '작성자 없음'
+                    "id": comment.id,
+                    "comment": comment.comment,
+                    "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "created_by": comment.created_by or "작성자 없음",
                 }
                 for comment in comments
             ]
-            
+
             issue_data = {
-                'id': issue.id,
-                'content': issue.content,
-                'date': issue.date.strftime("%Y-%m-%d") if issue.date else None,
-                'created_at': issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                'created_by': issue.created_by or '작성자 없음',
-                'resolved': issue.resolved,
-                'comments': comments_data
+                "id": issue.id,
+                "content": issue.content,
+                "date": issue.date.strftime("%Y-%m-%d") if issue.date else None,
+                "created_at": issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_by": issue.created_by or "작성자 없음",
+                "resolved": issue.resolved,
+                "comments": comments_data,
             }
             issues_grouped[course].append(issue_data)
-        
+
         session.close()
-        
+
         # 응답 형식 변환
         response_data = [
             {"training_course": course, "issues": issues_list}
             for course, issues_list in issues_grouped.items()
         ]
-        
+
         return jsonify({"success": True, "data": response_data}), 200
-        
+
     except Exception as e:
         logger.error("Error retrieving issues", exc_info=True)
         return (
@@ -269,7 +277,9 @@ def add_comment():
 
             if not issue:
                 return (
-                    jsonify({"success": False, "message": "해당 이슈를 찾을 수 없습니다."}),
+                    jsonify(
+                        {"success": False, "message": "해당 이슈를 찾을 수 없습니다."}
+                    ),
                     404,
                 )
 
@@ -330,12 +340,14 @@ def get_issue_comments():
 
         session = get_db_session()
         try:
-            comments_query = session.query(IssueComment).filter(
-                IssueComment.issue_id == issue_id
-            ).order_by(IssueComment.created_at.asc())
-            
+            comments_query = (
+                session.query(IssueComment)
+                .filter(IssueComment.issue_id == issue_id)
+                .order_by(IssueComment.created_at.asc())
+            )
+
             comments = comments_query.all()
-            
+
             comments_data = [
                 {
                     "id": comment.id,
@@ -345,12 +357,12 @@ def get_issue_comments():
                 }
                 for comment in comments
             ]
-            
+
             return jsonify({"success": True, "data": comments_data}), 200
-            
+
         finally:
             session.close()
-            
+
     except Exception as e:
         logger.error("Error retrieving issue comments", exc_info=True)
         return jsonify({"success": False, "message": "댓글 조회 실패"}), 500
@@ -394,11 +406,14 @@ def resolve_issue():
         try:
             issue = session.query(Issue).filter(Issue.id == issue_id).first()
             if not issue:
-                return jsonify({"success": False, "message": "이슈를 찾을 수 없습니다."}), 404
-                
+                return (
+                    jsonify({"success": False, "message": "이슈를 찾을 수 없습니다."}),
+                    404,
+                )
+
             issue.resolved = True
             session.commit()
-            
+
         except Exception as e:
             session.rollback()
             logger.error(f"이슈 해결 중 오류: {str(e)}")
@@ -428,7 +443,7 @@ def download_issues():
     """
     try:
         session = get_db_session()
-        
+
         issues_query = session.query(Issue).all()
         issues = [
             (
@@ -437,11 +452,11 @@ def download_issues():
                 issue.date.strftime("%Y-%m-%d") if issue.date else None,
                 issue.training_course,
                 issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                issue.resolved
+                issue.resolved,
             )
             for issue in issues_query
         ]
-        
+
         session.close()
 
         # DataFrame 생성

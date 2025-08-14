@@ -136,7 +136,11 @@ def get_notices():
         session = get_db_session()
 
         # ORM을 사용하여 공지사항 조회
-        notices_query = session.query(Notice).filter(Notice.is_deleted == False).order_by(Notice.date.desc())
+        notices_query = (
+            session.query(Notice)
+            .filter(Notice.is_deleted == False)
+            .order_by(Notice.date.desc())
+        )
         notices = []
 
         for notice in notices_query.all():

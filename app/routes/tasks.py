@@ -125,7 +125,11 @@ def save_tasks():
                 is_checked = update.get("is_checked", False)
 
                 # task_id 찾기
-                task = session.query(TaskItem).filter(TaskItem.task_name == task_name).first()
+                task = (
+                    session.query(TaskItem)
+                    .filter(TaskItem.task_name == task_name)
+                    .first()
+                )
                 if not task:
                     continue
 
@@ -250,7 +254,11 @@ def update_tasks():
                 is_checked = update.get("is_checked", False)
 
                 # task_id 찾기
-                task = session.query(TaskItem).filter(TaskItem.task_name == task_name).first()
+                task = (
+                    session.query(TaskItem)
+                    .filter(TaskItem.task_name == task_name)
+                    .first()
+                )
                 if not task:
                     not_found_items.append(task_name)
                     continue
@@ -281,7 +289,10 @@ def update_tasks():
         except Exception as e:
             session.rollback()
             logger.error(f"체크리스트 업데이트 중 오류: {str(e)}")
-            return jsonify({"success": False, "message": "체크리스트 업데이트 실패"}), 500
+            return (
+                jsonify({"success": False, "message": "체크리스트 업데이트 실패"}),
+                500,
+            )
         finally:
             session.close()
 
@@ -332,28 +343,32 @@ def get_irregular_tasks():
     """
     try:
         session = get_db_session()
-        
+
         # 비정기 업무는 UncheckedDescription 모델을 사용
         from app.models.models import UncheckedDescription
-        
+
         # 가장 최근 상태만 조회 (resolved=False인 항목들)
-        tasks_query = session.query(UncheckedDescription).filter(
-            UncheckedDescription.resolved == False
-        ).order_by(UncheckedDescription.created_at.desc())
-        
+        tasks_query = (
+            session.query(UncheckedDescription)
+            .filter(UncheckedDescription.resolved == False)
+            .order_by(UncheckedDescription.created_at.desc())
+        )
+
         tasks = []
         for task in tasks_query.all():
-            tasks.append({
-                "id": task.id,
-                "task_name": task.content,
-                "is_checked": task.resolved,
-                "checked_date": task.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            })
-        
+            tasks.append(
+                {
+                    "id": task.id,
+                    "task_name": task.content,
+                    "is_checked": task.resolved,
+                    "checked_date": task.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+
         session.close()
 
         return jsonify({"success": True, "data": tasks}), 200
-        
+
     except Exception as e:
         logger.error("비정기 업무 조회 오류", exc_info=True)
         return jsonify({"success": False, "message": "비정기 업무 조회 실패"}), 500
@@ -404,11 +419,11 @@ def save_irregular_tasks():
         session = get_db_session()
         try:
             from app.models.models import UncheckedDescription
-            
+
             for update in updates:
                 task_name = update.get("task_name")
                 is_checked = update.get("is_checked")
-                
+
                 # 비정기 업무 저장
                 irregular_task = UncheckedDescription(
                     content=task_name,
@@ -422,7 +437,12 @@ def save_irregular_tasks():
         except Exception as e:
             session.rollback()
             logger.error(f"비정기 업무 체크리스트 저장 중 오류: {str(e)}")
-            return jsonify({"success": False, "message": "비정기 업무 체크리스트 저장 실패"}), 500
+            return (
+                jsonify(
+                    {"success": False, "message": "비정기 업무 체크리스트 저장 실패"}
+                ),
+                500,
+            )
         finally:
             session.close()
 
