@@ -1,4 +1,3 @@
-from flask import jsonify
 from app.serializers import json_response
 
 

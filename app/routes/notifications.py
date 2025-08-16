@@ -1,5 +1,4 @@
-# app/routes/notifications.py
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 from datetime import datetime
 from app.models.db import get_db_session
 from app.models.models import UserLastCheck, Notice, Issue, IssueComment
@@ -119,6 +118,3 @@ def get_unread_count():
     except Exception as e:
         logger.error("알림 개수 조회 오류", exc_info=True)
         return error_json_response("알림 개수 조회 실패", status_code=500)
-
-
-

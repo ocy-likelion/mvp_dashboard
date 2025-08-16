@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 from datetime import datetime, timedelta
 import logging
 from app.models.db import get_db_session
@@ -107,7 +107,8 @@ def save_tasks():
 
         if not updates or not training_course or not username:
             return error_json_response(
-                "업데이트 데이터, 훈련 과정명, 사용자명이 모두 필요합니다.", status_code=400
+                "업데이트 데이터, 훈련 과정명, 사용자명이 모두 필요합니다.",
+                status_code=400,
             )
 
         session = get_db_session()
@@ -393,7 +394,9 @@ def save_irregular_tasks():
         training_course = data.get("training_course")
 
         if not updates or not training_course:
-            return error_json_response("업데이트 데이터와 훈련 과정명이 필요합니다.", status_code=400)
+            return error_json_response(
+                "업데이트 데이터와 훈련 과정명이 필요합니다.", status_code=400
+            )
 
         session = get_db_session()
         try:
@@ -416,7 +419,9 @@ def save_irregular_tasks():
         except Exception as e:
             session.rollback()
             logger.error(f"비정기 업무 체크리스트 저장 중 오류: {str(e)}")
-            return error_json_response("비정기 업무 체크리스트 저장 실패", status_code=500)
+            return error_json_response(
+                "비정기 업무 체크리스트 저장 실패", status_code=500
+            )
         finally:
             session.close()
 

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 import logging
 from app.models.db import get_db_session
 from app.models.models import (
@@ -356,7 +356,9 @@ def save_unchecked_description():
             session.close()
 
         return json_response(
-            data=None, message="미체크 항목과 액션 플랜이 저장되었습니다!", status_code=201
+            data=None,
+            message="미체크 항목과 액션 플랜이 저장되었습니다!",
+            status_code=201,
         )
 
     except Exception as e:
@@ -470,7 +472,9 @@ def resolve_unchecked_description():
             )
 
             if not unchecked_item:
-                return error_json_response("미체크 항목을 찾을 수 없습니다.", status_code=404)
+                return error_json_response(
+                    "미체크 항목을 찾을 수 없습니다.", status_code=404
+                )
 
             unchecked_item.resolved = True
             session.commit()

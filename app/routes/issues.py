@@ -410,16 +410,21 @@ def download_issues():
         session = get_db_session()
 
         issues_query = session.query(Issue).all()
+
+        # Serializer를 사용한 데이터 직렬화
+        serialized_issues = IssueSerializer.serialize_issues(issues_query)
+
+        # Excel 생성을 위한 데이터 변환
         issues = [
             (
-                issue.id,
-                issue.content,
-                issue.date.strftime("%Y-%m-%d") if issue.date else None,
-                issue.training_course,
-                issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                issue.resolved,
+                issue["id"],
+                issue["content"],
+                issue.get("date"),
+                issue["training_course"],
+                issue["created_at"],
+                issue["resolved"],
             )
-            for issue in issues_query
+            for issue in serialized_issues
         ]
 
         session.close()
@@ -442,7 +447,7 @@ def download_issues():
         )
     except Exception as e:
         logger.error("이슈사항 다운로드 실패", exc_info=True)
-        return jsonify({"success": False, "message": "이슈 다운로드 실패"}), 500
+        return error_json_response("이슈 다운로드 실패", status_code=500)
 
 
 # @issues_bp.route('/remarks', methods=['POST'])

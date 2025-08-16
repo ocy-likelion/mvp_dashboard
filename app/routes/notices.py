@@ -1,10 +1,8 @@
-from flask import Blueprint, request, jsonify
-from datetime import datetime
+from flask import Blueprint, request
 import logging
 from app.models.db import get_db_session
-from app.models.models import Notice, NoticeRead, User
+from app.models.models import Notice, NoticeRead
 from app.utils.notifications import SlackNotifier
-import os
 from app.serializers import (
     NoticeSerializer,
     json_response,

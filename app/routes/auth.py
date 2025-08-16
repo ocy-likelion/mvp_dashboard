@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, session
 import logging
 from app.models.db import get_db_session
 from app.models.models import User
