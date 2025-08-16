@@ -3,6 +3,12 @@ from datetime import datetime, timedelta
 import logging
 from app.models.db import get_db_session
 from app.models.models import TaskItem, TaskChecklist
+from app.serializers import (
+    TaskSerializer,
+    json_response,
+    error_json_response,
+    handle_serialization_errors,
+)
 
 tasks_bp = Blueprint("tasks", __name__)
 logger = logging.getLogger(__name__)
@@ -39,24 +45,19 @@ def get_tasks():
         if task_category:
             tasks_query = tasks_query.filter(TaskItem.task_category == task_category)
 
-        tasks = []
-        for task in tasks_query.all():
-            task_dict = {
-                "id": task.id,
-                "task_name": task.task_name,
-                "task_period": task.task_period,
-                "task_category": task.task_category,
-                "guide": task.guide if task.guide else "업무 가이드 없음",
-                "due": task.due,
-            }
-            tasks.append(task_dict)
+        tasks = tasks_query.all()
+
+        # Serializer를 사용한 데이터 직렬화
+        serialized_tasks = TaskSerializer.serialize_task_items(tasks)
 
         session.close()
 
-        return jsonify({"success": True, "data": tasks}), 200
+        return json_response(
+            data=serialized_tasks, message="업무 체크리스트 조회 성공", status_code=200
+        )
     except Exception as e:
         logger.error("Error retrieving tasks", exc_info=True)
-        return jsonify({"success": False, "message": "Failed to retrieve tasks"}), 500
+        return error_json_response("업무 체크리스트 조회 실패", status_code=500)
 
 
 @tasks_bp.route("/tasks", methods=["POST"])
@@ -105,14 +106,8 @@ def save_tasks():
         username = data.get("username")  # 프론트엔드에서 전달받은 username
 
         if not updates or not training_course or not username:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "업데이트 데이터, 훈련 과정명, 사용자명이 모두 필요합니다.",
-                    }
-                ),
-                400,
+            return error_json_response(
+                "업데이트 데이터, 훈련 과정명, 사용자명이 모두 필요합니다.", status_code=400
             )
 
         session = get_db_session()
@@ -165,23 +160,19 @@ def save_tasks():
         except Exception as e:
             session.rollback()
             logger.error(f"체크리스트 저장 중 오류: {str(e)}")
-            return jsonify({"success": False, "message": "체크리스트 저장 실패"}), 500
+            return error_json_response("체크리스트 저장 실패", status_code=500)
         finally:
             session.close()
 
-        return (
-            jsonify(
-                {
-                    "success": True,
-                    "message": "체크리스트가 성공적으로 저장/업데이트되었습니다!",
-                }
-            ),
-            201,
+        return json_response(
+            data=None,
+            message="체크리스트가 성공적으로 저장/업데이트되었습니다!",
+            status_code=201,
         )
 
     except Exception as e:
         logger.error("체크리스트 저장 중 오류 발생", exc_info=True)
-        return jsonify({"success": False, "message": "체크리스트 저장 실패"}), 500
+        return error_json_response("체크리스트 저장 실패", status_code=500)
 
 
 @tasks_bp.route("/tasks/update", methods=["PUT"])
@@ -234,14 +225,8 @@ def update_tasks():
         today = datetime.now().date()
 
         if not updates or not training_course:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "업데이트할 데이터와 훈련 과정명이 필요합니다.",
-                    }
-                ),
-                400,
+            return error_json_response(
+                "업데이트할 데이터와 훈련 과정명이 필요합니다.", status_code=400
             )
 
         session = get_db_session()
@@ -289,42 +274,34 @@ def update_tasks():
         except Exception as e:
             session.rollback()
             logger.error(f"체크리스트 업데이트 중 오류: {str(e)}")
-            return (
-                jsonify({"success": False, "message": "체크리스트 업데이트 실패"}),
-                500,
-            )
+            return error_json_response("체크리스트 업데이트 실패", status_code=500)
         finally:
             session.close()
 
         if updated_count == 0:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "당일 저장된 체크리스트가 없어 업데이트할 수 없습니다.",
-                        "not_found_items": not_found_items,
-                    }
-                ),
-                404,
+            return error_json_response(
+                "당일 저장된 체크리스트가 없어 업데이트할 수 없습니다.", status_code=404
             )
 
-        response = {
-            "success": True,
-            "message": "체크리스트가 성공적으로 업데이트되었습니다!",
+        response_data = {
             "updated_count": updated_count,
         }
 
         if not_found_items:
-            response["warning"] = (
+            response_data["warning"] = (
                 "일부 항목은 당일 저장된 데이터가 없어 업데이트되지 않았습니다."
             )
-            response["not_found_items"] = not_found_items
+            response_data["not_found_items"] = not_found_items
 
-        return jsonify(response), 200
+        return json_response(
+            data=response_data,
+            message="체크리스트가 성공적으로 업데이트되었습니다!",
+            status_code=200,
+        )
 
     except Exception as e:
         logger.error("체크리스트 업데이트 중 오류 발생", exc_info=True)
-        return jsonify({"success": False, "message": "체크리스트 업데이트 실패"}), 500
+        return error_json_response("체크리스트 업데이트 실패", status_code=500)
 
 
 @tasks_bp.route("/irregular_tasks", methods=["GET"])
@@ -367,11 +344,13 @@ def get_irregular_tasks():
 
         session.close()
 
-        return jsonify({"success": True, "data": tasks}), 200
+        return json_response(
+            data=tasks, message="비정기 업무 체크리스트 조회 성공", status_code=200
+        )
 
     except Exception as e:
         logger.error("비정기 업무 조회 오류", exc_info=True)
-        return jsonify({"success": False, "message": "비정기 업무 조회 실패"}), 500
+        return error_json_response("비정기 업무 조회 실패", status_code=500)
 
 
 @tasks_bp.route("/irregular_tasks", methods=["POST"])
@@ -414,7 +393,7 @@ def save_irregular_tasks():
         training_course = data.get("training_course")
 
         if not updates or not training_course:
-            return jsonify({"success": False, "message": "No data provided"}), 400
+            return error_json_response("업데이트 데이터와 훈련 과정명이 필요합니다.", status_code=400)
 
         session = get_db_session()
         try:
@@ -437,24 +416,15 @@ def save_irregular_tasks():
         except Exception as e:
             session.rollback()
             logger.error(f"비정기 업무 체크리스트 저장 중 오류: {str(e)}")
-            return (
-                jsonify(
-                    {"success": False, "message": "비정기 업무 체크리스트 저장 실패"}
-                ),
-                500,
-            )
+            return error_json_response("비정기 업무 체크리스트 저장 실패", status_code=500)
         finally:
             session.close()
 
-        return (
-            jsonify(
-                {"success": True, "message": "비정기 업무 체크리스트가 저장되었습니다!"}
-            ),
-            201,
+        return json_response(
+            data=None,
+            message="비정기 업무 체크리스트가 저장되었습니다!",
+            status_code=201,
         )
     except Exception as e:
         logger.error("비정기 업무 체크리스트 저장 오류", exc_info=True)
-        return (
-            jsonify({"success": False, "message": "비정기 업무 체크리스트 저장 실패"}),
-            500,
-        )
+        return error_json_response("비정기 업무 체크리스트 저장 실패", status_code=500)

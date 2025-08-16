@@ -8,6 +8,12 @@ from app.models.models import (
     TaskItem,
 )
 from datetime import datetime, timedelta
+from app.serializers import (
+    TrainingSerializer,
+    json_response,
+    error_json_response,
+    handle_serialization_errors,
+)
 
 training_bp = Blueprint("training", __name__)
 logger = logging.getLogger(__name__)
@@ -38,22 +44,22 @@ def get_training_courses():
             .order_by(TrainingInfo.start_date.desc())
         )
 
-        courses = [course.training_course for course in courses_query.all()]
+        courses = courses_query.all()
+
+        # Serializer를 사용한 데이터 직렬화
+        serialized_courses = TrainingSerializer.serialize_training_infos(courses)
+        course_names = [course["training_course"] for course in serialized_courses]
 
         session.close()
 
-        return jsonify({"success": True, "data": courses}), 200
+        return json_response(
+            data=course_names, message="훈련 과정 목록 조회 성공", status_code=200
+        )
 
     except Exception as e:
         logger.error("Error fetching training courses", exc_info=True)
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "훈련 과정 목록을 불러오는데 실패했습니다.",
-                }
-            ),
-            500,
+        return error_json_response(
+            "훈련 과정 목록을 불러오는데 실패했습니다.", status_code=500
         )
 
 
@@ -118,10 +124,7 @@ def save_training_info():
             or not dept
             or not manager_name
         ):
-            return (
-                jsonify({"success": False, "message": "모든 필드를 입력하세요."}),
-                400,
-            )
+            return error_json_response("모든 필드를 입력하세요.", status_code=400)
 
         session = get_db_session()
         try:
@@ -143,20 +146,16 @@ def save_training_info():
         except Exception as e:
             session.rollback()
             logger.error(f"훈련 과정 저장 중 오류: {str(e)}")
-            return (
-                jsonify({"success": False, "message": "Failed to save training info"}),
-                500,
-            )
+            return error_json_response("훈련 과정 저장 실패", status_code=500)
         finally:
             session.close()
 
-        return jsonify({"success": True, "message": "훈련 과정이 저장되었습니다!"}), 201
+        return json_response(
+            data=None, message="훈련 과정이 저장되었습니다!", status_code=201
+        )
     except Exception as e:
         logger.error("Error saving training info", exc_info=True)
-        return (
-            jsonify({"success": False, "message": "Failed to save training info"}),
-            500,
-        )
+        return error_json_response("훈련 과정 저장 실패", status_code=500)
 
 
 @training_bp.route("/training_info", methods=["GET"])
@@ -198,14 +197,13 @@ def get_training_info():
 
         session.close()
 
-        return jsonify({"success": True, "data": courses_data})
+        return json_response(
+            data=courses_data, message="훈련 과정 목록 조회 성공", status_code=200
+        )
 
     except Exception as e:
         logger.error("Error fetching training info", exc_info=True)
-        return (
-            jsonify({"success": False, "message": "Failed to fetch training info"}),
-            500,
-        )
+        return error_json_response("훈련 과정 목록 조회 실패", status_code=500)
 
 
 @training_bp.route("/unchecked_descriptions", methods=["GET"])
@@ -283,19 +281,13 @@ def get_unchecked_descriptions():
 
         session.close()
 
-        return jsonify({"success": True, "data": unchecked_items}), 200
+        return json_response(
+            data=unchecked_items, message="미체크 항목 목록 조회 성공", status_code=200
+        )
 
     except Exception as e:
         logger.error("Error retrieving unchecked descriptions", exc_info=True)
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "미체크 항목 목록을 불러오는 중 오류 발생",
-                }
-            ),
-            500,
-        )
+        return error_json_response("미체크 항목 목록 조회 실패", status_code=500)
 
 
 @training_bp.route("/unchecked_descriptions", methods=["POST"])
@@ -332,7 +324,7 @@ def save_unchecked_description():
     """
     try:
         if not request.is_json:
-            return jsonify({"success": False, "message": "Invalid JSON format"}), 400
+            return error_json_response("잘못된 JSON 형식입니다.", status_code=400)
 
         data = request.get_json()
         description = data.get("description", "").strip()
@@ -340,14 +332,8 @@ def save_unchecked_description():
         training_course = data.get("training_course", "").strip()
 
         if not description or not action_plan or not training_course:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "설명, 액션 플랜, 훈련과정명을 모두 입력하세요.",
-                    }
-                ),
-                400,
+            return error_json_response(
+                "설명, 액션 플랜, 훈련과정명을 모두 입력하세요.", status_code=400
             )
 
         session = get_db_session()
@@ -365,23 +351,17 @@ def save_unchecked_description():
         except Exception as e:
             session.rollback()
             logger.error(f"미체크 항목 저장 중 오류: {str(e)}")
-            return jsonify({"success": False, "message": "서버 오류 발생"}), 500
+            return error_json_response("미체크 항목 저장 실패", status_code=500)
         finally:
             session.close()
 
-        return (
-            jsonify(
-                {
-                    "success": True,
-                    "message": "미체크 항목과 액션 플랜이 저장되었습니다!",
-                }
-            ),
-            201,
+        return json_response(
+            data=None, message="미체크 항목과 액션 플랜이 저장되었습니다!", status_code=201
         )
 
     except Exception as e:
         logger.error("Error saving unchecked description", exc_info=True)
-        return jsonify({"success": False, "message": "서버 오류 발생"}), 500
+        return error_json_response("미체크 항목 저장 실패", status_code=500)
 
 
 @training_bp.route("/unchecked_comments", methods=["POST"])
@@ -419,14 +399,8 @@ def add_unchecked_comment():
         comment = data.get("comment")
 
         if not unchecked_id or not comment:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "미체크 항목 ID와 댓글 내용을 입력하세요.",
-                    }
-                ),
-                400,
+            return error_json_response(
+                "미체크 항목 ID와 댓글 내용을 입력하세요.", status_code=400
             )
 
         session = get_db_session()
@@ -442,14 +416,16 @@ def add_unchecked_comment():
         except Exception as e:
             session.rollback()
             logger.error(f"댓글 저장 중 오류: {str(e)}")
-            return jsonify({"success": False, "message": "댓글 저장 실패"}), 500
+            return error_json_response("댓글 저장 실패", status_code=500)
         finally:
             session.close()
 
-        return jsonify({"success": True, "message": "댓글이 저장되었습니다."}), 201
+        return json_response(
+            data=None, message="댓글이 저장되었습니다.", status_code=201
+        )
     except Exception as e:
         logger.error("Error saving unchecked comment", exc_info=True)
-        return jsonify({"success": False, "message": "댓글 저장 실패"}), 500
+        return error_json_response("댓글 저장 실패", status_code=500)
 
 
 @training_bp.route("/unchecked_descriptions/resolve", methods=["POST"])
@@ -483,10 +459,7 @@ def resolve_unchecked_description():
         unchecked_id = data.get("unchecked_id")
 
         if not unchecked_id:
-            return (
-                jsonify({"success": False, "message": "미체크 항목 ID가 필요합니다."}),
-                400,
-            )
+            return error_json_response("미체크 항목 ID가 필요합니다.", status_code=400)
 
         session = get_db_session()
         try:
@@ -497,12 +470,7 @@ def resolve_unchecked_description():
             )
 
             if not unchecked_item:
-                return (
-                    jsonify(
-                        {"success": False, "message": "미체크 항목을 찾을 수 없습니다."}
-                    ),
-                    404,
-                )
+                return error_json_response("미체크 항목을 찾을 수 없습니다.", status_code=404)
 
             unchecked_item.resolved = True
             session.commit()
@@ -510,17 +478,16 @@ def resolve_unchecked_description():
         except Exception as e:
             session.rollback()
             logger.error(f"미체크 항목 해결 중 오류: {str(e)}")
-            return jsonify({"success": False, "message": "미체크 항목 해결 실패"}), 500
+            return error_json_response("미체크 항목 해결 실패", status_code=500)
         finally:
             session.close()
 
-        return (
-            jsonify({"success": True, "message": "미체크 항목이 해결되었습니다."}),
-            200,
+        return json_response(
+            data=None, message="미체크 항목이 해결되었습니다.", status_code=200
         )
     except Exception as e:
         logger.error("Error resolving unchecked description", exc_info=True)
-        return jsonify({"success": False, "message": "미체크 항목 해결 실패"}), 500
+        return error_json_response("미체크 항목 해결 실패", status_code=500)
 
 
 @training_bp.route("/unchecked_comments", methods=["GET"])
@@ -548,10 +515,7 @@ def get_unchecked_comments():
         unchecked_id = request.args.get("unchecked_id")
 
         if not unchecked_id:
-            return (
-                jsonify({"success": False, "message": "미체크 항목 ID를 입력하세요."}),
-                400,
-            )
+            return error_json_response("미체크 항목 ID를 입력하세요.", status_code=400)
 
         session = get_db_session()
         try:
@@ -570,11 +534,13 @@ def get_unchecked_comments():
                 for comment in comments_query.all()
             ]
 
-            return jsonify({"success": True, "data": comments}), 200
+            return json_response(
+                data=comments, message="미체크 항목 댓글 조회 성공", status_code=200
+            )
 
         finally:
             session.close()
 
     except Exception as e:
         logger.error("Error retrieving unchecked comments", exc_info=True)
-        return jsonify({"success": False, "message": "미체크 항목 댓글 조회 실패"}), 500
+        return error_json_response("미체크 항목 댓글 조회 실패", status_code=500)

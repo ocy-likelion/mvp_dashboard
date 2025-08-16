@@ -5,7 +5,11 @@ from app.models.db import get_db_session
 from app.models.models import UserLastCheck, Notice, Issue, IssueComment
 from app.utils.notifications import SlackNotifier
 import logging
-import requests
+
+from app.serializers import (
+    json_response,
+    error_json_response,
+)
 
 notifications_bp = Blueprint("notifications", __name__)
 logger = logging.getLogger(__name__)
@@ -36,7 +40,7 @@ def get_unread_count():
     try:
         username = request.args.get("username")
         if not username:
-            return jsonify({"success": False, "message": "사용자명이 필요합니다."}), 400
+            return error_json_response("사용자명이 필요합니다.", status_code=400)
 
         session = get_db_session()
         try:
@@ -57,18 +61,14 @@ def get_unread_count():
                 )
                 session.add(last_check)
                 session.commit()
-                return (
-                    jsonify(
-                        {
-                            "success": True,
-                            "data": {
-                                "new_notices": 0,
-                                "new_issues": 0,
-                                "new_comments": 0,
-                            },
-                        }
-                    ),
-                    200,
+                return json_response(
+                    data={
+                        "new_notices": 0,
+                        "new_issues": 0,
+                        "new_comments": 0,
+                    },
+                    message="미확인 알림 개수 조회 성공",
+                    status_code=200,
                 )
 
             # 새로운 항목 개수 조회
@@ -99,60 +99,26 @@ def get_unread_count():
             last_check.last_comment_check = datetime.now()
             session.commit()
 
-            return (
-                jsonify(
-                    {
-                        "success": True,
-                        "data": {
-                            "new_notices": new_notices,
-                            "new_issues": new_issues,
-                            "new_comments": new_comments,
-                        },
-                    }
-                ),
-                200,
+            return json_response(
+                data={
+                    "new_notices": new_notices,
+                    "new_issues": new_issues,
+                    "new_comments": new_comments,
+                },
+                message="미확인 알림 개수 조회 성공",
+                status_code=200,
             )
 
         except Exception as e:
             session.rollback()
             logger.error(f"알림 개수 조회 중 오류: {str(e)}")
-            return jsonify({"success": False, "message": "알림 개수 조회 실패"}), 500
+            return error_json_response("알림 개수 조회 실패", status_code=500)
         finally:
             session.close()
 
     except Exception as e:
         logger.error("알림 개수 조회 오류", exc_info=True)
-        return jsonify({"success": False, "message": "알림 개수 조회 실패"}), 500
+        return error_json_response("알림 개수 조회 실패", status_code=500)
 
 
-def send_notification(self, message):
-    if not self.webhook_url:
-        logger.error("SLACK_WEBHOOK_URL이 설정되지 않았습니다.")
-        logger.error(
-            f"현재 환경변수: WEBHOOK_URL={self.webhook_url}, CHANNEL={self.channel}"
-        )
-        return False
 
-    try:
-        payload = {
-            "channel": self.channel,
-            "text": message,
-            "username": "Lion Helper Bot",
-            "icon_emoji": ":lion_face:",
-        }
-
-        logger.info(f"Slack webhook 호출 시도 - Channel: {self.channel}")
-        response = requests.post(self.webhook_url, json=payload)
-        logger.info(f"Slack 응답 코드: {response.status_code}")
-        logger.info(f"Slack 응답 내용: {response.text}")
-
-        if response.status_code == 200:
-            return True
-        else:
-            logger.error(
-                f"Slack 알림 전송 실패: {response.status_code}, {response.text}"
-            )
-            return False
-    except Exception as e:
-        logger.error(f"Slack 알림 전송 중 오류 발생: {str(e)}", exc_info=True)
-        return False

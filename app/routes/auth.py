@@ -7,12 +7,19 @@ from app.utils.password import (
     verify_password,
     validate_password_strength,
 )
+from app.serializers import (
+    UserSerializer,
+    json_response,
+    error_json_response,
+    handle_serialization_errors,
+)
 
 auth_bp = Blueprint("auth", __name__)
 logger = logging.getLogger(__name__)
 
 
 @auth_bp.route("/login", methods=["POST"])
+@handle_serialization_errors
 def login():
     """
     로그인 API
@@ -44,59 +51,47 @@ def login():
         description: 서버 오류
     """
     data = request.json
-    username = data.get("username")
-    password = data.get("password")
+    if not data:
+        return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-    if not username or not password:
-        return (
-            jsonify({"success": False, "message": "ID와 비밀번호를 입력하세요."}),
-            400,
-        )
+    # 스키마를 사용한 데이터 검증
+    validated_data = UserSerializer.deserialize_user_login(data)
 
     try:
         session_db = get_db_session()
         try:
             # 사용자 조회
-            user = session_db.query(User).filter(User.username == username).first()
+            user = (
+                session_db.query(User)
+                .filter(User.username == validated_data["username"])
+                .first()
+            )
 
             if not user:
-                return (
-                    jsonify(
-                        {"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}
-                    ),
-                    401,
+                return error_json_response(
+                    "잘못된 ID 또는 비밀번호입니다.", status_code=401
                 )
 
             # 비밀번호 검증 (bcrypt 사용)
-            if not verify_password(password, user.password):
-                return (
-                    jsonify(
-                        {"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}
-                    ),
-                    401,
+            if not verify_password(validated_data["password"], user.password):
+                return error_json_response(
+                    "잘못된 ID 또는 비밀번호입니다.", status_code=401
                 )
 
         finally:
             session_db.close()
 
         session.permanent = True  # 세션을 영구적으로 설정
-        user_data = {"id": user.id, "username": username}
+        user_data = {"id": user.id, "username": user.username}
         session["user"] = user_data
 
-        return (
-            jsonify(
-                {
-                    "success": True,
-                    "message": "로그인 성공!",
-                    "user": user_data,  # 사용자 정보 포함
-                }
-            ),
-            200,
+        return json_response(
+            data={"user": user_data}, message="로그인 성공!", status_code=200
         )
 
     except Exception as e:
         logger.error("로그인 오류", exc_info=True)
-        return jsonify({"success": False, "message": "서버 오류 발생"}), 500
+        return error_json_response("서버 오류 발생", status_code=500)
 
 
 @auth_bp.route("/logout", methods=["POST"])
@@ -111,7 +106,7 @@ def logout():
         description: 로그아웃 완료
     """
     session.pop("user", None)
-    return jsonify({"success": True, "message": "로그아웃 완료!"}), 200
+    return json_response(data=None, message="로그아웃 완료!", status_code=200)
 
 
 @auth_bp.route("/me", methods=["GET"])
@@ -128,11 +123,12 @@ def get_current_user():
         description: 로그인 필요
     """
     if "user" not in session:
-        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
-    return jsonify({"success": True, "user": session["user"]}), 200
+        return error_json_response("로그인이 필요합니다.", status_code=401)
+    return json_response(data={"user": session["user"]}, status_code=200)
 
 
 @auth_bp.route("/user/change-password", methods=["POST"])
+@handle_serialization_errors
 def change_password():
     """
     사용자 비밀번호 변경 API
@@ -171,77 +167,51 @@ def change_password():
     """
     try:
         data = request.json
-        username = data.get("username")
-        current_password = data.get("current_password")
-        new_password = data.get("new_password")
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        if not username or not current_password or not new_password:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "사용자명, 현재 비밀번호, 새 비밀번호를 모두 입력하세요.",
-                    }
-                ),
-                400,
-            )
+        # 필수 필드 검증
+        required_fields = ["username", "current_password", "new_password"]
+        for field in required_fields:
+            if not data.get(field):
+                return error_json_response(
+                    f"{field} 필드가 필요합니다.", status_code=400
+                )
 
         # 새 비밀번호 강도 검증
-        is_valid, error_message = validate_password_strength(new_password)
+        is_valid, error_message = validate_password_strength(data["new_password"])
         if not is_valid:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": error_message,
-                    }
-                ),
-                400,
-            )
+            return error_json_response(error_message, status_code=400)
 
         session_db = get_db_session()
         try:
             # 현재 비밀번호 확인
-            user = session_db.query(User).filter(User.username == username).first()
+            user = (
+                session_db.query(User).filter(User.username == data["username"]).first()
+            )
 
             if not user:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": "사용자명 또는 현재 비밀번호가 일치하지 않습니다.",
-                        }
-                    ),
-                    401,
+                return error_json_response(
+                    "사용자명 또는 현재 비밀번호가 일치하지 않습니다.", status_code=401
                 )
 
             # 현재 비밀번호 검증 (bcrypt 사용)
-            if not verify_password(current_password, user.password):
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": "사용자명 또는 현재 비밀번호가 일치하지 않습니다.",
-                        }
-                    ),
-                    401,
+            if not verify_password(data["current_password"], user.password):
+                return error_json_response(
+                    "사용자명 또는 현재 비밀번호가 일치하지 않습니다.", status_code=401
                 )
 
             # 새 비밀번호 해싱
-            hashed_new_password = hash_password(new_password)
+            hashed_new_password = hash_password(data["new_password"])
 
             # 비밀번호 업데이트
             user.password = hashed_new_password
             session_db.commit()
 
-            return (
-                jsonify(
-                    {
-                        "success": True,
-                        "message": "비밀번호가 성공적으로 변경되었습니다.",
-                    }
-                ),
-                200,
+            return json_response(
+                data=None,
+                message="비밀번호가 성공적으로 변경되었습니다.",
+                status_code=200,
             )
 
         finally:
@@ -249,9 +219,6 @@ def change_password():
 
     except Exception as e:
         logger.error("비밀번호 변경 오류", exc_info=True)
-        return (
-            jsonify(
-                {"success": False, "message": "비밀번호 변경 중 오류가 발생했습니다."}
-            ),
-            500,
+        return error_json_response(
+            "비밀번호 변경 중 오류가 발생했습니다.", status_code=500
         )

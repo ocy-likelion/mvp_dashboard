@@ -3,6 +3,10 @@ import logging
 from app.models.db import get_db_session
 from app.models.models import TaskChecklist, TrainingInfo
 from datetime import datetime, timedelta
+from app.serializers import (
+    json_response,
+    error_json_response,
+)
 
 admin_bp = Blueprint("admin", __name__)
 logger = logging.getLogger(__name__)
@@ -62,13 +66,12 @@ def get_task_status():
 
         session.close()
 
-        return jsonify({"success": True, "data": task_status}), 200
+        return json_response(
+            data=task_status, message="업무 체크 상태 조회 성공", status_code=200
+        )
     except Exception as e:
         logger.error("Error retrieving task status", exc_info=True)
-        return (
-            jsonify({"success": False, "message": "Failed to retrieve task status"}),
-            500,
-        )
+        return error_json_response("업무 체크 상태 조회 실패", status_code=500)
 
 
 @admin_bp.route("/admin/task_status_overall", methods=["GET"])
@@ -116,15 +119,12 @@ def get_overall_task_status():
 
         session.close()
 
-        return jsonify({"success": True, "data": task_status}), 200
+        return json_response(
+            data=task_status, message="전체 업무 체크 상태 조회 성공", status_code=200
+        )
     except Exception as e:
         logger.error("Error retrieving overall task status", exc_info=True)
-        return (
-            jsonify(
-                {"success": False, "message": "Failed to retrieve overall task status"}
-            ),
-            500,
-        )
+        return error_json_response("전체 업무 체크 상태 조회 실패", status_code=500)
 
 
 @admin_bp.route("/admin/task_status_combined", methods=["GET"])
@@ -218,12 +218,9 @@ def get_combined_task_status():
 
         session.close()
 
-        return jsonify({"success": True, "data": task_status}), 200
+        return json_response(
+            data=task_status, message="통합 업무 체크 상태 조회 성공", status_code=200
+        )
     except Exception as e:
         logger.error("Error retrieving combined task status", exc_info=True)
-        return (
-            jsonify(
-                {"success": False, "message": "체크율 정보를 불러오는데 실패했습니다."}
-            ),
-            500,
-        )
+        return error_json_response("통합 업무 체크 상태 조회 실패", status_code=500)

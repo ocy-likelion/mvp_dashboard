@@ -1,4 +1,5 @@
 from flask import jsonify
+from app.serializers import json_response
 
 
 def register_routes(app):
@@ -24,18 +25,18 @@ def register_routes(app):
     # 시스템 상태 확인 라우트
     @app.route("/healthcheck", methods=["GET"])
     def healthcheck():
-        return jsonify({"status": "ok", "message": "Service is running!"}), 200
+        return json_response(
+            data={"status": "ok"}, message="Service is running!", status_code=200
+        )
 
     # 루트 경로
     @app.route("/", methods=["GET"])
     def index():
-        return (
-            jsonify(
-                {
-                    "status": "ok",
-                    "message": "API 서버가 정상적으로 실행 중입니다.",
-                    "version": "1.0.0",
-                }
-            ),
-            200,
+        return json_response(
+            data={
+                "status": "ok",
+                "version": "1.0.0",
+            },
+            message="API 서버가 정상적으로 실행 중입니다.",
+            status_code=200,
         )

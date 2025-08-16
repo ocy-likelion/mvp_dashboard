@@ -5,6 +5,12 @@ from app.models.db import get_db_session
 from app.models.models import Notice, NoticeRead, User
 from app.utils.notifications import SlackNotifier
 import os
+from app.serializers import (
+    NoticeSerializer,
+    json_response,
+    error_json_response,
+    handle_serialization_errors,
+)
 
 notices_bp = Blueprint("notices", __name__)
 logger = logging.getLogger(__name__)
@@ -12,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # SlackNotifier 인스턴스를 전역 변수로 생성하지 않음
 @notices_bp.route("/notices", methods=["POST"])
+@handle_serialization_errors
 def add_notice():
     """
     공지사항 추가 API
@@ -27,7 +34,7 @@ def add_notice():
           required:
             - title
             - content
-            - username
+            - created_by
           properties:
             title:
               type: string
@@ -35,7 +42,7 @@ def add_notice():
             content:
               type: string
               description: 공지사항 내용
-            username:
+            created_by:
               type: string
               description: 작성자명
             type:
@@ -53,30 +60,17 @@ def add_notice():
     """
     try:
         data = request.json
-        title = data.get("title")
-        content = data.get("content")
-        created_by = data.get("username")
-        notice_type = data.get("type", "공지사항")
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        if not title or not content or not created_by:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "제목, 내용, 작성자를 모두 입력하세요.",
-                    }
-                ),
-                400,
-            )
+        # 스키마를 사용한 데이터 검증
+        validated_data = NoticeSerializer.deserialize_notice_create(data)
 
         # 허용된 사용자 확인
         allowed_users = ["김은지", "장지연", "김슬기"]
-        if created_by not in allowed_users:
-            return (
-                jsonify(
-                    {"success": False, "message": "공지사항 작성 권한이 없습니다."}
-                ),
-                403,
+        if validated_data.get("created_by") not in allowed_users:
+            return error_json_response(
+                "공지사항 작성 권한이 없습니다.", status_code=403
             )
 
         # DB 작업 - ORM 사용
@@ -84,39 +78,38 @@ def add_notice():
         try:
             # 공지사항 생성
             notice = Notice(
-                title=title,
-                content=content,
-                type=notice_type,
-                created_by=created_by,
+                title=validated_data["title"],
+                content=validated_data["content"],
+                type=validated_data.get("type", "공지사항"),
+                created_by=validated_data.get("created_by"),
             )
 
             session.add(notice)
             session.commit()
 
             notice_id = notice.id
+
+            # 저장된 공지사항 직렬화
+            serialized_notice = NoticeSerializer.serialize_notice(notice)
+
         except Exception as e:
             session.rollback()
             logger.error(f"공지사항 추가 중 오류: {str(e)}")
-            return (
-                jsonify(
-                    {"success": False, "message": "데이터베이스 오류가 발생했습니다."}
-                ),
-                500,
+            return error_json_response(
+                "공지사항 추가 중 오류가 발생했습니다.", status_code=500
             )
         finally:
             session.close()
 
         # Slack 알림 전송 (channel -> channel_type으로 수정)
         notifier = SlackNotifier()
-        notification_message = (
-            f"새로운 공지사항이 등록되었습니다!\n제목: {title}\n작성자: {created_by}"
-        )
+        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {validated_data['title']}\n작성자: {validated_data['created_by']}"
         notifier.send_notification(notification_message, channel_type="notice")
 
-        return jsonify({"success": True, "message": "공지사항이 저장되었습니다!"}), 201
+        return json_response(serialized_notice, status_code=201)
     except Exception as e:
         logger.error(f"공지사항 추가 중 오류: {str(e)}")
-        return jsonify({"success": False, "message": "공지사항 추가 실패"}), 500
+        return error_json_response("공지사항 추가 실패", status_code=500)
 
 
 @notices_bp.route("/notices", methods=["GET"])
@@ -155,18 +148,17 @@ def get_notices():
             notices.append(notice_dict)
 
         session.close()
-        return jsonify({"success": True, "data": notices}), 200
+        return json_response({"data": notices}), 200
     except Exception as e:
         logger.error("Error retrieving notices", exc_info=True)
         return (
-            jsonify(
-                {"success": False, "message": "공지사항을 불러오는데 실패했습니다."}
-            ),
+            error_json_response("공지사항을 불러오는데 실패했습니다.", status_code=500),
             500,
         )
 
 
 @notices_bp.route("/notices/<int:notice_id>", methods=["PUT"])
+@handle_serialization_errors
 def update_notice(notice_id):
     """
     공지사항 수정 API
@@ -209,21 +201,17 @@ def update_notice(notice_id):
     """
     try:
         data = request.json
-        title = data.get("title")
-        content = data.get("content")
-        notice_type = data.get("type")
-        username = data.get("username")  # 수정자 정보
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        if not title or not content or not username:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "제목, 내용, 사용자명을 모두 입력하세요.",
-                    }
-                ),
-                400,
-            )
+        # 스키마를 사용한 데이터 검증
+        validated_data = NoticeSerializer.deserialize_notice_update(data)
+
+        # 수정자 정보 추출
+        username = validated_data.get("username")
+
+        if not username:
+            return error_json_response("수정자 정보가 누락되었습니다.", status_code=400)
 
         session = get_db_session()
         try:
@@ -231,57 +219,44 @@ def update_notice(notice_id):
             notice = session.query(Notice).filter(Notice.id == notice_id).first()
 
             if not notice:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": "해당 공지사항을 찾을 수 없습니다.",
-                        }
-                    ),
-                    404,
+                return error_json_response(
+                    "해당 공지사항을 찾을 수 없습니다.", status_code=404
                 )
 
             # 공지사항 업데이트
-            notice.title = title
-            notice.content = content
-            notice.type = notice_type
+            notice.title = validated_data.get("title")
+            notice.content = validated_data.get("content")
+            notice.type = validated_data.get("type")
             notice.modified_by = username
 
             session.commit()
 
+            # 수정된 공지사항 직렬화
+            serialized_notice = NoticeSerializer.serialize_notice(notice)
+
         except Exception as e:
             session.rollback()
             logger.error(f"공지사항 수정 중 오류: {str(e)}")
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "공지사항 수정 중 오류가 발생했습니다.",
-                    }
-                ),
-                500,
+            return error_json_response(
+                "공지사항 수정 중 오류가 발생했습니다.", status_code=500
             )
         finally:
             session.close()
 
-        return (
-            jsonify(
-                {"success": True, "message": "공지사항이 성공적으로 수정되었습니다."}
-            ),
-            200,
-        )
+        return json_response(serialized_notice), 200
 
     except Exception as e:
         logger.error("공지사항 수정 오류", exc_info=True)
         return (
-            jsonify(
-                {"success": False, "message": "공지사항 수정 중 오류가 발생했습니다."}
+            error_json_response(
+                "공지사항 수정 중 오류가 발생했습니다.", status_code=500
             ),
             500,
         )
 
 
 @notices_bp.route("/notices/<int:notice_id>", methods=["DELETE"])
+@handle_serialization_errors
 def delete_notice(notice_id):
     """
     공지사항 삭제 API
@@ -309,53 +284,40 @@ def delete_notice(notice_id):
             notice = session.query(Notice).filter(Notice.id == notice_id).first()
 
             if not notice:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": "해당 공지사항을 찾을 수 없습니다.",
-                        }
-                    ),
-                    404,
+                return error_json_response(
+                    "해당 공지사항을 찾을 수 없습니다.", status_code=404
                 )
 
             # 공지사항 삭제 (soft delete)
             notice.is_deleted = True
             session.commit()
 
+            # 삭제된 공지사항 직렬화
+            serialized_notice = NoticeSerializer.serialize_notice(notice)
+
         except Exception as e:
             session.rollback()
             logger.error(f"공지사항 삭제 중 오류: {str(e)}")
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "공지사항 삭제 중 오류가 발생했습니다.",
-                    }
-                ),
-                500,
+            return error_json_response(
+                "공지사항 삭제 중 오류가 발생했습니다.", status_code=500
             )
         finally:
             session.close()
 
-        return (
-            jsonify(
-                {"success": True, "message": "공지사항이 성공적으로 삭제되었습니다."}
-            ),
-            200,
-        )
+        return json_response(serialized_notice), 200
 
     except Exception as e:
         logger.error("공지사항 삭제 오류", exc_info=True)
         return (
-            jsonify(
-                {"success": False, "message": "공지사항 삭제 중 오류가 발생했습니다."}
+            error_json_response(
+                "공지사항 삭제 중 오류가 발생했습니다.", status_code=500
             ),
             500,
         )
 
 
 @notices_bp.route("/notices/read", methods=["POST"])
+@handle_serialization_errors
 def mark_notice_read():
     """
     공지사항 읽음 표시 API
@@ -388,18 +350,18 @@ def mark_notice_read():
     """
     try:
         data = request.json
-        notice_id = data.get("notice_id")
-        username = data.get("username")
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
+
+        # 스키마를 사용한 데이터 검증
+        validated_data = NoticeSerializer.deserialize_notice_read(data)
+
+        notice_id = validated_data.get("notice_id")
+        username = validated_data.get("username")
 
         if not notice_id or not username:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "공지사항 ID와 사용자 이름이 필요합니다.",
-                    }
-                ),
-                400,
+            return error_json_response(
+                "공지사항 ID와 사용자 이름이 필요합니다.", status_code=400
             )
 
         session = get_db_session()
@@ -407,11 +369,8 @@ def mark_notice_read():
             # 공지사항 존재 확인
             notice = session.query(Notice).filter(Notice.id == notice_id).first()
             if not notice:
-                return (
-                    jsonify(
-                        {"success": False, "message": "공지사항을 찾을 수 없습니다."}
-                    ),
-                    404,
+                return error_json_response(
+                    "공지사항을 찾을 수 없습니다.", status_code=404
                 )
 
             # 이미 읽었는지 확인
@@ -429,23 +388,24 @@ def mark_notice_read():
                 session.add(notice_read)
                 session.commit()
 
+            # 읽음 표시 직렬화
+            serialized_notice_read = NoticeSerializer.serialize_notice_read(notice_read)
+
         except Exception as e:
             session.rollback()
             logger.error(f"공지사항 읽음 표시 중 오류: {str(e)}")
-            return (
-                jsonify({"success": False, "message": "공지사항 읽음 표시 실패"}),
-                500,
-            )
+            return error_json_response("공지사항 읽음 표시 실패", status_code=500)
         finally:
             session.close()
 
-        return jsonify({"success": True, "message": "공지사항 읽음 표시 완료"}), 201
+        return json_response(serialized_notice_read), 201
     except Exception as e:
         logger.error("공지사항 읽음 표시 오류", exc_info=True)
-        return jsonify({"success": False, "message": "공지사항 읽음 표시 실패"}), 500
+        return error_json_response("공지사항 읽음 표시 실패", status_code=500)
 
 
 @notices_bp.route("/notices/reads", methods=["GET"])
+@handle_serialization_errors
 def get_notice_reads():
     """
     공지사항별 읽은 사용자 목록 조회 API
@@ -470,10 +430,7 @@ def get_notice_reads():
         notice_id = request.args.get("notice_id")
 
         if not notice_id:
-            return (
-                jsonify({"success": False, "message": "공지사항 ID가 필요합니다."}),
-                400,
-            )
+            return error_json_response("공지사항 ID가 필요합니다.", status_code=400)
 
         session = get_db_session()
         try:
@@ -494,18 +451,18 @@ def get_notice_reads():
                 )
 
             session.close()
-            return jsonify({"success": True, "data": reads_data}), 200
+            return json_response({"data": reads_data}), 200
 
         except Exception as e:
             session.close()
             logger.error(f"공지사항 읽음 목록 조회 중 오류: {str(e)}")
             return (
-                jsonify({"success": False, "message": "공지사항 읽음 목록 조회 실패"}),
+                error_json_response("공지사항 읽음 목록 조회 실패", status_code=500),
                 500,
             )
     except Exception as e:
         logger.error("공지사항 읽음 목록 조회 오류", exc_info=True)
         return (
-            jsonify({"success": False, "message": "공지사항 읽음 목록 조회 실패"}),
+            error_json_response("공지사항 읽음 목록 조회 실패", status_code=500),
             500,
         )
