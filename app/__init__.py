@@ -1,15 +1,17 @@
-from dotenv import load_dotenv
-import os
 import logging
 import sys
 from flask import Flask
 from flask_cors import CORS
 from flasgger import Swagger
 from datetime import timedelta
-from app.models.db import db, init_db
-
-# 환경 변수 로딩을 가장 먼저 수행
-load_dotenv()
+from app.models.db import init_db
+from app.config import (
+    SECRET_KEY,
+    DEBUG,
+    SQLALCHEMY_DATABASE_URI,
+    SQLALCHEMY_TRACK_MODIFICATIONS,
+    SQLALCHEMY_ENGINE_OPTIONS,
+)
 
 # 전역 로깅 설정
 logging.basicConfig(
@@ -24,24 +26,11 @@ def create_app():
     logger = logging.getLogger(__name__)
     logger.info("애플리케이션 시작")
 
-    secret_key = os.getenv("SECRET_KEY")
-    if not secret_key:
-        import secrets
-
-        secret_key = secrets.token_hex(32)  # 32바이트(256비트) 랜덤 키 생성
-        logger.warning(
-            "SECRET_KEY 환경 변수가 설정되지 않았습니다. 임시 키를 생성합니다."
-        )
-
-    app.secret_key = secret_key
+    # Flask 기본 설정
+    app.secret_key = SECRET_KEY
+    app.debug = DEBUG
 
     # SQLAlchemy 설정
-    from app.config import (
-        SQLALCHEMY_DATABASE_URI,
-        SQLALCHEMY_TRACK_MODIFICATIONS,
-        SQLALCHEMY_ENGINE_OPTIONS,
-    )
-
     app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = SQLALCHEMY_ENGINE_OPTIONS

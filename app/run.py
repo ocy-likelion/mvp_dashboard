@@ -1,11 +1,6 @@
 from app import create_app
-import os
+from app.config import PORT
 from flask_cors import CORS
-
-try:
-    PORT = int(os.getenv("PORT", "10000"))
-except ValueError:
-    PORT = 10000
 
 app = create_app()
 CORS(
