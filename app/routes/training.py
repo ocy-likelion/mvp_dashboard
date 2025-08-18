@@ -381,7 +381,9 @@ def get_unchecked_comments():
         session = get_db_session()
         try:
             # Serializer를 사용한 댓글 조회
-            comments = UncheckedSerializer.get_unchecked_comments(session, int(unchecked_id))
+            comments = UncheckedSerializer.get_unchecked_comments(
+                session, int(unchecked_id)
+            )
 
             return json_response(
                 data=comments, message="미체크 항목 댓글 조회 성공", status_code=200

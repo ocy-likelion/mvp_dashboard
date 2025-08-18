@@ -197,7 +197,9 @@ def add_comment():
 
         # 댓글 등록 알림
         notifier = SlackNotifier()
-        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n댓글: {comment_data['comment']}"
+        notification_message = (
+            f"이슈에 새로운 댓글이 등록되었습니다!\n댓글: {comment_data['comment']}"
+        )
         notifier.send_notification(notification_message, channel_type="comment")
 
         return json_response(

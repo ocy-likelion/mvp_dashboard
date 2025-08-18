@@ -38,7 +38,7 @@ def get_attendance():
         format_type = request.args.get("format", "json")  # 기본값 JSON
 
         session = get_db_session()
-        
+
         # Serializer를 사용한 출퇴근 기록 조회
         serialized_records = AttendanceSerializer.get_attendance(session)
 
