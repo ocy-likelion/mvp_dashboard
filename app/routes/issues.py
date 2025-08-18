@@ -1,11 +1,10 @@
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, send_file
 import io
 import pandas as pd
 import logging
 from app.models.db import get_db_session
-from app.models.models import Issue, IssueComment
+
 from app.utils.notifications import SlackNotifier
-from datetime import datetime
 from app.serializers import (
     IssueSerializer,
     json_response,
@@ -64,28 +63,12 @@ def create_issue():
         if not data:
             return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        # 스키마를 사용한 데이터 검증
-        validated_data = IssueSerializer.deserialize_issue_create(data)
-
-        # 3. 데이터베이스 저장 - ORM 사용
+        # 3. 데이터베이스 저장 - Serializer 사용
         session = get_db_session()
         try:
-            # 이슈 생성
-            issue = Issue(
-                content=validated_data["content"],
-                training_course=validated_data.get("training_course"),
-                username=validated_data.get("username"),
-                created_by=validated_data.get(
-                    "created_by", validated_data.get("username")
-                ),
-                date=validated_data.get("date"),
-                resolved=False,
-            )
-
-            session.add(issue)
+            # Serializer를 사용한 이슈 생성 (검증 포함)
+            issue_data = IssueSerializer.create_issue(session, data)
             session.commit()
-
-            issue_id = issue.id
 
         except Exception as e:
             session.rollback()
@@ -101,9 +84,9 @@ def create_issue():
             notifier = SlackNotifier()
             message = (
                 f"*새로운 이슈가 등록되었습니다!*\n"
-                f">*과정:* {validated_data.get('training_course')}\n"
-                f">*내용:* {validated_data['content']}\n"
-                f">*작성자:* {validated_data.get('username')}"
+                f">*과정:* {issue_data.get('training_course')}\n"
+                f">*내용:* {issue_data['content']}\n"
+                f">*작성자:* {issue_data.get('username')}"
             )
             notifier.send_notification(message, "issue")
         except Exception as e:
@@ -111,7 +94,7 @@ def create_issue():
 
         # 5. 성공 응답
         return json_response(
-            data={"id": issue_id, **validated_data},
+            data=issue_data,
             message="이슈가 성공적으로 생성되었습니다.",
             status_code=201,
         )
@@ -138,43 +121,10 @@ def get_issues():
     try:
         session = get_db_session()
 
-        # ORM을 사용하여 해결되지 않은 이슈 조회
-        issues_query = (
-            session.query(Issue)
-            .filter(Issue.resolved == False)
-            .order_by(Issue.created_at.desc())
-        )
-        issues = issues_query.all()
-
-        # Serializer를 사용한 데이터 직렬화
-        serialized_issues = IssueSerializer.serialize_issues(issues)
-
-        # 교육과정별로 그룹화
-        issues_grouped = {}
-        for issue, serialized_issue in zip(issues, serialized_issues):
-            course = issue.training_course
-            if course not in issues_grouped:
-                issues_grouped[course] = []
-
-            # 댓글 조회 및 직렬화
-            comments = (
-                session.query(IssueComment)
-                .filter(IssueComment.issue_id == issue.id)
-                .all()
-            )
-            serialized_comments = IssueSerializer.serialize_issue_comments(comments)
-
-            # 댓글 정보를 이슈에 추가
-            serialized_issue["comments"] = serialized_comments
-            issues_grouped[course].append(serialized_issue)
+        # Serializer를 사용한 이슈 목록 조회
+        response_data = IssueSerializer.get_issues(session)
 
         session.close()
-
-        # 응답 형식 변환
-        response_data = [
-            {"training_course": course, "issues": issues_list}
-            for course, issues_list in issues_grouped.items()
-        ]
 
         return json_response(
             data=response_data, message="이슈 목록 조회 성공", status_code=200
@@ -229,35 +179,14 @@ def add_comment():
         if not data:
             return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        # 스키마를 사용한 데이터 검증
-        validated_data = IssueSerializer.deserialize_issue_comment_create(data)
-
         session = get_db_session()
         try:
-            # 이슈 정보 조회
-            issue = (
-                session.query(Issue)
-                .filter(Issue.id == validated_data["issue_id"])
-                .first()
-            )
-
-            if not issue:
-                return error_json_response(
-                    "해당 이슈를 찾을 수 없습니다.", status_code=404
-                )
-
-            # 댓글 저장
-            issue_comment = IssueComment(
-                issue_id=validated_data["issue_id"],
-                comment=validated_data["comment"],
-                created_by=validated_data.get("created_by"),
-            )
-
-            session.add(issue_comment)
+            # Serializer를 사용한 댓글 추가 (검증 포함)
+            comment_data = IssueSerializer.add_comment(session, data)
             session.commit()
 
             # 저장된 댓글 직렬화
-            serialized_comment = IssueSerializer.serialize_issue_comment(issue_comment)
+            serialized_comment = IssueSerializer.serialize_issue_comment(comment_data)
 
         except Exception as e:
             session.rollback()
@@ -268,7 +197,7 @@ def add_comment():
 
         # 댓글 등록 알림
         notifier = SlackNotifier()
-        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n과정명: {issue.training_course}\n댓글: {validated_data['comment']}"
+        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n댓글: {comment_data['comment']}"
         notifier.send_notification(notification_message, channel_type="comment")
 
         return json_response(
@@ -303,21 +232,10 @@ def get_issue_comments():
     try:
         issue_id = request.args.get("issue_id")
 
-        if not issue_id:
-            return error_json_response("이슈 ID를 입력하세요.", status_code=400)
-
         session = get_db_session()
         try:
-            comments_query = (
-                session.query(IssueComment)
-                .filter(IssueComment.issue_id == issue_id)
-                .order_by(IssueComment.created_at.asc())
-            )
-
-            comments = comments_query.all()
-
-            # Serializer를 사용한 데이터 직렬화
-            serialized_comments = IssueSerializer.serialize_issue_comments(comments)
+            # Serializer를 사용한 이슈 댓글 조회 (검증 포함)
+            serialized_comments = IssueSerializer.get_issue_comments(session, issue_id)
 
             return json_response(
                 data=serialized_comments, message="댓글 조회 성공", status_code=200
@@ -333,6 +251,7 @@ def get_issue_comments():
 
 # 해결된 이슈 클릭
 @issues_bp.route("/issues/resolve", methods=["POST"])
+@handle_serialization_errors
 def resolve_issue():
     """
     이슈 해결 API
@@ -360,22 +279,14 @@ def resolve_issue():
     """
     try:
         data = request.json
-        if not data or not data.get("issue_id"):
-            return error_json_response("이슈 ID가 필요합니다.", status_code=400)
-
-        issue_id = data["issue_id"]
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
         session = get_db_session()
         try:
-            issue = session.query(Issue).filter(Issue.id == issue_id).first()
-            if not issue:
-                return error_json_response("이슈를 찾을 수 없습니다.", status_code=404)
-
-            issue.resolved = True
+            # Serializer를 사용한 이슈 해결 (검증 포함)
+            serialized_issue = IssueSerializer.resolve_issue(session, data)
             session.commit()
-
-            # 업데이트된 이슈 직렬화
-            serialized_issue = IssueSerializer.serialize_issue(issue)
 
         except Exception as e:
             session.rollback()
@@ -409,10 +320,8 @@ def download_issues():
     try:
         session = get_db_session()
 
-        issues_query = session.query(Issue).all()
-
-        # Serializer를 사용한 데이터 직렬화
-        serialized_issues = IssueSerializer.serialize_issues(issues_query)
+        # Serializer를 사용한 모든 이슈 조회
+        serialized_issues = IssueSerializer.get_all_issues(session)
 
         # Excel 생성을 위한 데이터 변환
         issues = [
