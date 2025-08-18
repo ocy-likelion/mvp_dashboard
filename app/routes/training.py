@@ -1,15 +1,10 @@
 from flask import Blueprint, request
 import logging
 from app.models.db import get_db_session
-from app.models.models import (
-    TrainingInfo,
-    UncheckedDescription,
-    UncheckedComment,
-    TaskItem,
-)
-from datetime import datetime, timedelta
+
 from app.serializers import (
     TrainingSerializer,
+    UncheckedSerializer,
     json_response,
     error_json_response,
     handle_serialization_errors,
@@ -36,19 +31,8 @@ def get_training_courses():
     try:
         session = get_db_session()
 
-        # 현재 날짜 기준으로 종료된 지 1주일 이내이거나 아직 진행 중인 과정만 조회
-        one_week_ago = datetime.now().date() - timedelta(days=7)
-        courses_query = (
-            session.query(TrainingInfo)
-            .filter(TrainingInfo.end_date >= one_week_ago)
-            .order_by(TrainingInfo.start_date.desc())
-        )
-
-        courses = courses_query.all()
-
-        # Serializer를 사용한 데이터 직렬화
-        serialized_courses = TrainingSerializer.serialize_training_infos(courses)
-        course_names = [course["training_course"] for course in serialized_courses]
+        # Serializer를 사용한 훈련 과정 목록 조회
+        course_names = TrainingSerializer.get_training_courses(session)
 
         session.close()
 
@@ -64,6 +48,7 @@ def get_training_courses():
 
 
 @training_bp.route("/training_info", methods=["POST"])
+@handle_serialization_errors
 def save_training_info():
     """
     훈련 과정 정보 저장 API
@@ -111,36 +96,13 @@ def save_training_info():
     """
     try:
         data = request.json
-        training_course = data.get("training_course", "").strip()
-        start_date = data.get("start_date", "").strip()
-        end_date = data.get("end_date", "").strip()
-        dept = data.get("dept", "").strip()
-        manager_name = data.get("manager_name", "").strip()
-
-        if (
-            not training_course
-            or not start_date
-            or not end_date
-            or not dept
-            or not manager_name
-        ):
-            return error_json_response("모든 필드를 입력하세요.", status_code=400)
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
         session = get_db_session()
         try:
-            # 날짜 문자열을 Date 객체로 변환
-            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
-            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
-
-            training_info = TrainingInfo(
-                training_course=training_course,
-                start_date=start_date_obj,
-                end_date=end_date_obj,
-                dept=dept,
-                manager_name=manager_name,
-            )
-
-            session.add(training_info)
+            # Serializer를 사용한 훈련 과정 정보 저장 (검증 포함)
+            TrainingSerializer.save_training_info(session, data)
             session.commit()
 
         except Exception as e:
@@ -174,26 +136,8 @@ def get_training_info():
     try:
         session = get_db_session()
 
-        courses_query = session.query(TrainingInfo).order_by(
-            TrainingInfo.start_date.desc()
-        )
-        courses = courses_query.all()
-
-        courses_data = [
-            {
-                "training_course": course.training_course,
-                "start_date": (
-                    course.start_date.strftime("%Y-%m-%d")
-                    if course.start_date
-                    else None
-                ),
-                "end_date": (
-                    course.end_date.strftime("%Y-%m-%d") if course.end_date else None
-                ),
-                "dept": course.dept,
-            }
-            for course in courses
-        ]
+        # Serializer를 사용한 훈련 과정 목록 조회
+        courses_data = TrainingSerializer.get_training_info(session)
 
         session.close()
 
@@ -222,62 +166,8 @@ def get_unchecked_descriptions():
     try:
         session = get_db_session()
 
-        # 미체크 항목 조회 (resolved=False인 항목들)
-        unchecked_query = (
-            session.query(UncheckedDescription)
-            .filter(UncheckedDescription.resolved == False)
-            .order_by(UncheckedDescription.created_at.desc())
-        )
-
-        unchecked_items = []
-        for item in unchecked_query.all():
-            # 부서 정보 조회
-            training_info = (
-                session.query(TrainingInfo)
-                .filter(TrainingInfo.training_course == item.training_course)
-                .first()
-            )
-            dept = training_info.dept if training_info else None
-
-            # due days 조회 (task_items에서 매칭되는 항목 찾기)
-            due_days = 3  # 기본값
-            if item.content:
-                task_item = (
-                    session.query(TaskItem)
-                    .filter(
-                        TaskItem.task_name.in_(
-                            [
-                                task_name
-                                for task_name in session.query(TaskItem.task_name).all()
-                            ]
-                        )
-                    )
-                    .filter(
-                        item.content.like(f"%{TaskItem.task_name}%에 대한 미체크 사유")
-                    )
-                    .first()
-                )
-                if task_item:
-                    due_days = task_item.due or 3
-
-            # 마감일 계산
-            deadline = item.created_at.date() + timedelta(days=due_days)
-            is_overdue = datetime.now().date() > deadline
-
-            unchecked_items.append(
-                {
-                    "id": item.id,
-                    "content": item.content,
-                    "action_plan": item.action_plan,
-                    "training_course": item.training_course,
-                    "dept": dept,
-                    "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    "resolved": item.resolved,
-                    "due_days": due_days,
-                    "deadline": deadline.strftime("%Y-%m-%d"),
-                    "is_overdue": is_overdue,
-                }
-            )
+        # Serializer를 사용한 미체크 항목 목록 조회
+        unchecked_items = UncheckedSerializer.get_unchecked_descriptions(session)
 
         session.close()
 
@@ -291,6 +181,7 @@ def get_unchecked_descriptions():
 
 
 @training_bp.route("/unchecked_descriptions", methods=["POST"])
+@handle_serialization_errors
 def save_unchecked_description():
     """
     미체크 항목 설명과 액션 플랜 저장 API
@@ -304,11 +195,11 @@ def save_unchecked_description():
         schema:
           type: object
           required:
-            - description
+            - content
             - action_plan
             - training_course
           properties:
-            description:
+            content:
               type: string
             action_plan:
               type: string
@@ -323,29 +214,14 @@ def save_unchecked_description():
         description: 서버 오류 발생
     """
     try:
-        if not request.is_json:
-            return error_json_response("잘못된 JSON 형식입니다.", status_code=400)
-
-        data = request.get_json()
-        description = data.get("description", "").strip()
-        action_plan = data.get("action_plan", "").strip()
-        training_course = data.get("training_course", "").strip()
-
-        if not description or not action_plan or not training_course:
-            return error_json_response(
-                "설명, 액션 플랜, 훈련과정명을 모두 입력하세요.", status_code=400
-            )
+        data = request.json
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
         session = get_db_session()
         try:
-            unchecked_description = UncheckedDescription(
-                content=description,
-                action_plan=action_plan,
-                training_course=training_course,
-                resolved=False,
-            )
-
-            session.add(unchecked_description)
+            # Serializer를 사용한 미체크 항목 저장 (검증 포함)
+            UncheckedSerializer.save_unchecked_description(session, data)
             session.commit()
 
         except Exception as e:
@@ -367,6 +243,7 @@ def save_unchecked_description():
 
 
 @training_bp.route("/unchecked_comments", methods=["POST"])
+@handle_serialization_errors
 def add_unchecked_comment():
     """
     미체크 항목에 댓글 추가 API
@@ -397,22 +274,13 @@ def add_unchecked_comment():
     """
     try:
         data = request.json
-        unchecked_id = data.get("unchecked_id")
-        comment = data.get("comment")
-
-        if not unchecked_id or not comment:
-            return error_json_response(
-                "미체크 항목 ID와 댓글 내용을 입력하세요.", status_code=400
-            )
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
         session = get_db_session()
         try:
-            unchecked_comment = UncheckedComment(
-                unchecked_id=unchecked_id,
-                comment=comment,
-            )
-
-            session.add(unchecked_comment)
+            # Serializer를 사용한 댓글 추가 (검증 포함)
+            UncheckedSerializer.add_unchecked_comment(session, data)
             session.commit()
 
         except Exception as e:
@@ -431,6 +299,7 @@ def add_unchecked_comment():
 
 
 @training_bp.route("/unchecked_descriptions/resolve", methods=["POST"])
+@handle_serialization_errors
 def resolve_unchecked_description():
     """
     미체크 항목 해결 API
@@ -458,25 +327,13 @@ def resolve_unchecked_description():
     """
     try:
         data = request.json
-        unchecked_id = data.get("unchecked_id")
-
-        if not unchecked_id:
-            return error_json_response("미체크 항목 ID가 필요합니다.", status_code=400)
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
         session = get_db_session()
         try:
-            unchecked_item = (
-                session.query(UncheckedDescription)
-                .filter(UncheckedDescription.id == unchecked_id)
-                .first()
-            )
-
-            if not unchecked_item:
-                return error_json_response(
-                    "미체크 항목을 찾을 수 없습니다.", status_code=404
-                )
-
-            unchecked_item.resolved = True
+            # Serializer를 사용한 미체크 항목 해결 (검증 포함)
+            UncheckedSerializer.resolve_unchecked_description(session, data)
             session.commit()
 
         except Exception as e:
@@ -523,20 +380,8 @@ def get_unchecked_comments():
 
         session = get_db_session()
         try:
-            comments_query = (
-                session.query(UncheckedComment)
-                .filter(UncheckedComment.unchecked_id == unchecked_id)
-                .order_by(UncheckedComment.created_at.asc())
-            )
-
-            comments = [
-                {
-                    "id": comment.id,
-                    "comment": comment.comment,
-                    "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                for comment in comments_query.all()
-            ]
+            # Serializer를 사용한 댓글 조회
+            comments = UncheckedSerializer.get_unchecked_comments(session, int(unchecked_id))
 
             return json_response(
                 data=comments, message="미체크 항목 댓글 조회 성공", status_code=200
