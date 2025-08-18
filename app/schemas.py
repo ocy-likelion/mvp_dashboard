@@ -1,6 +1,7 @@
 from datetime import datetime
-from marshmallow import Schema, fields, post_load, validates, ValidationError
-from marshmallow_sqlalchemy import SQLAlchemyAutoSchema, auto_field
+from marshmallow import Schema, fields, validates, ValidationError
+from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
+import re
 from app.models.models import (
     User,
     Attendance,
@@ -48,9 +49,26 @@ class UserCreateSchema(Schema):
     """사용자 생성용 스키마"""
 
     username = fields.Str(required=True, validate=lambda x: len(x) >= 3)
-    password = fields.Str(required=True, validate=lambda x: len(x) >= 6)
+    password = fields.Str(required=True)
     name = fields.Str(required=True)
     email = fields.Email(required=True)
+
+    @validates("password")
+    def validate_password_strength(self, value):
+        if len(value) < 8:
+            raise ValidationError("비밀번호는 최소 8자 이상이어야 합니다.")
+
+        if not re.search(r"[A-Z]", value):
+            raise ValidationError("비밀번호는 대문자를 포함해야 합니다.")
+
+        if not re.search(r"[a-z]", value):
+            raise ValidationError("비밀번호는 소문자를 포함해야 합니다.")
+
+        if not re.search(r"\d", value):
+            raise ValidationError("비밀번호는 숫자를 포함해야 합니다.")
+
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', value):
+            raise ValidationError("비밀번호는 특수문자를 포함해야 합니다.")
 
 
 class UserUpdateSchema(Schema):
@@ -66,6 +84,41 @@ class UserLoginSchema(Schema):
 
     username = fields.Str(required=True)
     password = fields.Str(required=True)
+
+    @validates("password")
+    def validate_password(self, value):
+        if not value.strip():
+            raise ValidationError("비밀번호를 입력해주세요.")
+
+
+class PasswordChangeSchema(Schema):
+    """비밀번호 변경용 스키마"""
+
+    username = fields.Str(required=True)
+    current_password = fields.Str(required=True)
+    new_password = fields.Str(required=True)
+
+    @validates("current_password")
+    def validate_current_password(self, value):
+        if not value.strip():
+            raise ValidationError("현재 비밀번호를 입력해주세요.")
+
+    @validates("new_password")
+    def validate_new_password_strength(self, value):
+        if len(value) < 8:
+            raise ValidationError("비밀번호는 최소 8자 이상이어야 합니다.")
+
+        if not re.search(r"[A-Z]", value):
+            raise ValidationError("비밀번호는 대문자를 포함해야 합니다.")
+
+        if not re.search(r"[a-z]", value):
+            raise ValidationError("비밀번호는 소문자를 포함해야 합니다.")
+
+        if not re.search(r"\d", value):
+            raise ValidationError("비밀번호는 숫자를 포함해야 합니다.")
+
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', value):
+            raise ValidationError("비밀번호는 특수문자를 포함해야 합니다.")
 
 
 # ============================================================================
@@ -262,6 +315,43 @@ class TaskChecklistCreateSchema(Schema):
     user_id = fields.Int()
 
 
+class TaskUpdateSchema(Schema):
+    """작업 체크리스트 업데이트용 스키마"""
+
+    updates = fields.List(fields.Dict(), required=True)
+    training_course = fields.Str(required=True)
+    username = fields.Str(required=True)
+
+    @validates("updates")
+    def validate_updates(self, value):
+        if not value:
+            raise ValidationError("업데이트 데이터가 필요합니다.")
+        
+        for update in value:
+            if "task_name" not in update:
+                raise ValidationError("각 업데이트에 task_name이 필요합니다.")
+            if "is_checked" not in update:
+                raise ValidationError("각 업데이트에 is_checked가 필요합니다.")
+
+
+class IrregularTaskCreateSchema(Schema):
+    """불규칙 업무 생성용 스키마"""
+
+    updates = fields.List(fields.Dict(), required=True)
+    training_course = fields.Str(required=True)
+
+    @validates("updates")
+    def validate_updates(self, value):
+        if not value:
+            raise ValidationError("업데이트 데이터가 필요합니다.")
+        
+        for update in value:
+            if "task_name" not in update:
+                raise ValidationError("각 업데이트에 task_name이 필요합니다.")
+            if "is_checked" not in update:
+                raise ValidationError("각 업데이트에 is_checked가 필요합니다.")
+
+
 # ============================================================================
 # Unchecked 관련 스키마
 # ============================================================================
@@ -307,6 +397,21 @@ class UncheckedDescriptionCreateSchema(Schema):
     task_id = fields.Int()
     created_by = fields.Str()
 
+    @validates("content")
+    def validate_content(self, value):
+        if not value.strip():
+            raise ValidationError("미해결 항목 내용을 입력해주세요.")
+
+    @validates("action_plan")
+    def validate_action_plan(self, value):
+        if value and not value.strip():
+            raise ValidationError("액션 플랜을 입력해주세요.")
+
+    @validates("training_course")
+    def validate_training_course(self, value):
+        if value and not value.strip():
+            raise ValidationError("훈련 과정명을 입력해주세요.")
+
 
 class UncheckedCommentCreateSchema(Schema):
     """미해결 댓글 생성용 스키마"""
@@ -316,6 +421,24 @@ class UncheckedCommentCreateSchema(Schema):
     user_id = fields.Int()
     username = fields.Str()
     created_by = fields.Str()
+
+    @validates("comment")
+    def validate_comment(self, value):
+        if not value.strip():
+            raise ValidationError("댓글 내용을 입력해주세요.")
+
+
+class UncheckedResolveSchema(Schema):
+    """미해결 항목 해결용 스키마"""
+
+    unchecked_id = fields.Int(required=True)
+    resolved_by = fields.Str(required=True)
+    resolution_comment = fields.Str()
+
+    @validates("unchecked_id")
+    def validate_unchecked_id(self, value):
+        if value <= 0:
+            raise ValidationError("유효한 미해결 항목 ID를 입력해주세요.")
 
 
 # ============================================================================
@@ -341,20 +464,137 @@ class TrainingInfoCreateSchema(Schema):
     """교육 정보 생성용 스키마"""
 
     training_course = fields.Str(required=True)  # nullable=False
-    start_date = fields.Date()
-    end_date = fields.Date()
-    dept = fields.Str()
-    manager_name = fields.Str()
+    start_date = fields.Str(required=True)  # 문자열로 받아서 변환
+    end_date = fields.Str(required=True)  # 문자열로 받아서 변환
+    dept = fields.Str(required=True)
+    manager_name = fields.Str(required=True)
+
+    @validates("start_date")
+    def validate_start_date(self, value):
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            raise ValidationError("시작 날짜는 YYYY-MM-DD 형식이어야 합니다.")
+
+    @validates("end_date")
+    def validate_end_date(self, value):
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            raise ValidationError("종료 날짜는 YYYY-MM-DD 형식이어야 합니다.")
 
 
 class TrainingInfoUpdateSchema(Schema):
     """교육 정보 수정용 스키마"""
 
     training_course = fields.Str()
-    start_date = fields.Date()
-    end_date = fields.Date()
+    start_date = fields.Str()
+    end_date = fields.Str()
     dept = fields.Str()
     manager_name = fields.Str()
+
+    @validates("start_date")
+    def validate_start_date(self, value):
+        if value:
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                raise ValidationError("시작 날짜는 YYYY-MM-DD 형식이어야 합니다.")
+
+    @validates("end_date")
+    def validate_end_date(self, value):
+        if value:
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                raise ValidationError("종료 날짜는 YYYY-MM-DD 형식이어야 합니다.")
+
+
+# ============================================================================
+# Notice 관련 추가 스키마
+# ============================================================================
+
+
+class NoticeReadCreateSchema(Schema):
+    """공지사항 읽음 처리용 스키마"""
+
+    notice_id = fields.Int(required=True)
+    username = fields.Str(required=True)
+
+
+class NoticeDeleteSchema(Schema):
+    """공지사항 삭제용 스키마"""
+
+    notice_id = fields.Int(required=True)
+    username = fields.Str(required=True)
+
+    @validates("username")
+    def validate_username(self, value):
+        allowed_users = ["김은지", "장지연", "김슬기"]
+        if value not in allowed_users:
+            raise ValidationError("공지사항 삭제 권한이 없습니다.")
+
+
+# ============================================================================
+# Issue 관련 추가 스키마
+# ============================================================================
+
+
+class IssueResolveSchema(Schema):
+    """이슈 해결용 스키마"""
+
+    issue_id = fields.Int(required=True)
+    resolved_by = fields.Str()
+    resolution_comment = fields.Str()
+
+    @validates("issue_id")
+    def validate_issue_id(self, value):
+        if value <= 0:
+            raise ValidationError("유효한 이슈 ID를 입력해주세요.")
+
+
+# ============================================================================
+# Attendance 관련 추가 스키마
+# ============================================================================
+
+
+class AttendanceTimeSchema(Schema):
+    """출퇴근 시간 변환용 스키마"""
+
+    check_in_time = fields.Str()
+    check_out_time = fields.Str()
+
+    @validates("check_in_time")
+    def validate_check_in_time(self, value):
+        if value:
+            try:
+                datetime.strptime(value, "%H:%M")
+            except ValueError:
+                raise ValidationError("출근 시간은 HH:MM 형식이어야 합니다.")
+
+    @validates("check_out_time")
+    def validate_check_out_time(self, value):
+        if value:
+            try:
+                datetime.strptime(value, "%H:%M")
+            except ValueError:
+                raise ValidationError("퇴근 시간은 HH:MM 형식이어야 합니다.")
+
+
+# ============================================================================
+# Notification 관련 스키마
+# ============================================================================
+
+
+class NotificationQuerySchema(Schema):
+    """알림 조회용 스키마"""
+
+    username = fields.Str(required=True)
+
+    @validates("username")
+    def validate_username(self, value):
+        if not value.strip():
+            raise ValidationError("사용자명을 입력해주세요.")
 
 
 # ============================================================================
@@ -447,6 +687,7 @@ user_last_checks_schema = UserLastCheckSchema(many=True)
 user_create_schema = UserCreateSchema()
 user_update_schema = UserUpdateSchema()
 user_login_schema = UserLoginSchema()
+password_change_schema = PasswordChangeSchema()
 attendance_create_schema = AttendanceCreateSchema()
 issue_create_schema = IssueCreateSchema()
 issue_comment_create_schema = IssueCommentCreateSchema()
@@ -459,6 +700,16 @@ unchecked_comment_create_schema = UncheckedCommentCreateSchema()
 training_info_create_schema = TrainingInfoCreateSchema()
 training_info_update_schema = TrainingInfoUpdateSchema()
 user_last_check_update_schema = UserLastCheckUpdateSchema()
+
+# 추가 검증용 스키마
+task_update_schema = TaskUpdateSchema()
+irregular_task_create_schema = IrregularTaskCreateSchema()
+unchecked_resolve_schema = UncheckedResolveSchema()
+notice_read_create_schema = NoticeReadCreateSchema()
+notice_delete_schema = NoticeDeleteSchema()
+issue_resolve_schema = IssueResolveSchema()
+attendance_time_schema = AttendanceTimeSchema()
+notification_query_schema = NotificationQuerySchema()
 
 # 응답 래퍼 스키마
 response_schema = ResponseSchema()
