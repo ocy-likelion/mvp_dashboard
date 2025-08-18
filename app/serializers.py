@@ -486,10 +486,10 @@ class TaskSerializer:
         """체크리스트 저장/업데이트"""
         from datetime import datetime, timedelta
         from app.models.models import TaskItem, TaskChecklist
-        
+
         # 데이터 검증
         validated_data = TaskSerializer.deserialize_task_update(data)
-        
+
         # 현재 날짜 가져오기 (시간 제외)
         current_date = datetime.now().date()
 
@@ -499,9 +499,7 @@ class TaskSerializer:
 
             # task_id 찾기
             task = (
-                session.query(TaskItem)
-                .filter(TaskItem.task_name == task_name)
-                .first()
+                session.query(TaskItem).filter(TaskItem.task_name == task_name).first()
             )
             if not task:
                 continue
@@ -538,13 +536,13 @@ class TaskSerializer:
         """체크리스트 업데이트 (당일 데이터만)"""
         from datetime import datetime, timedelta
         from app.models.models import TaskItem, TaskChecklist
-        
+
         # 데이터 검증
         validated_data = TaskSerializer.deserialize_task_update(data)
-        
+
         # 현재 날짜만 사용 (시간 제외)
         today = datetime.now().date()
-        
+
         updated_count = 0
         not_found_items = []
 
@@ -554,9 +552,7 @@ class TaskSerializer:
 
             # task_id 찾기
             task = (
-                session.query(TaskItem)
-                .filter(TaskItem.task_name == task_name)
-                .first()
+                session.query(TaskItem).filter(TaskItem.task_name == task_name).first()
             )
             if not task:
                 not_found_items.append(task_name)
@@ -583,16 +579,13 @@ class TaskSerializer:
                 # 업데이트할 데이터가 없음
                 not_found_items.append(task_name)
 
-        return {
-            "updated_count": updated_count,
-            "not_found_items": not_found_items
-        }
+        return {"updated_count": updated_count, "not_found_items": not_found_items}
 
     @staticmethod
     def get_tasks(session, task_category: str = None) -> List[Dict]:
         """업무 체크리스트 조회"""
         from app.models.models import TaskItem
-        
+
         # ORM을 사용하여 업무 조회
         tasks_query = session.query(TaskItem).order_by(TaskItem.id.asc())
 
@@ -649,7 +642,7 @@ class UncheckedSerializer:
     def get_irregular_tasks(session) -> List[Dict]:
         """비정기 업무 목록 조회"""
         from app.models.models import UncheckedDescription
-        
+
         # 가장 최근 상태만 조회 (resolved=False인 항목들)
         tasks_query = (
             session.query(UncheckedDescription)
@@ -659,19 +652,26 @@ class UncheckedSerializer:
 
         tasks = []
         for task in tasks_query.all():
-            tasks.append({
-                "id": task.id,
-                "task_name": task.content,
-                "is_checked": task.resolved,
-                "checked_date": task.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            })
-        
+            tasks.append(
+                {
+                    "id": task.id,
+                    "task_name": task.content,
+                    "is_checked": task.resolved,
+                    "checked_date": task.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+
         return tasks
 
     @staticmethod
-    def create_irregular_task(session, task_name: str, training_course: str, is_checked: bool):
+    def create_irregular_task(
+        session, task_name: str, training_course: str, is_checked: bool
+    ):
         """비정기 업무 생성"""
-        from app.models.models import UncheckedDescription # Temporarily here, should be refactored to a repository
+        from app.models.models import (
+            UncheckedDescription,
+        )  # Temporarily here, should be refactored to a repository
+
         irregular_task = UncheckedDescription(
             content=task_name,
             training_course=training_course,
@@ -685,17 +685,14 @@ class UncheckedSerializer:
         """비정기 업무 저장"""
         # 데이터 검증
         validated_data = TaskSerializer.deserialize_irregular_task_create(data)
-        
+
         for update in validated_data["updates"]:
             task_name = update.get("task_name")
             is_checked = update.get("is_checked")
 
             # Serializer를 사용한 비정기 업무 생성
             UncheckedSerializer.create_irregular_task(
-                session, 
-                task_name, 
-                validated_data["training_course"], 
-                is_checked
+                session, task_name, validated_data["training_course"], is_checked
             )
 
 

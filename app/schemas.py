@@ -326,7 +326,7 @@ class TaskUpdateSchema(Schema):
     def validate_updates(self, value):
         if not value:
             raise ValidationError("업데이트 데이터가 필요합니다.")
-        
+
         for update in value:
             if "task_name" not in update:
                 raise ValidationError("각 업데이트에 task_name이 필요합니다.")
@@ -344,7 +344,7 @@ class IrregularTaskCreateSchema(Schema):
     def validate_updates(self, value):
         if not value:
             raise ValidationError("업데이트 데이터가 필요합니다.")
-        
+
         for update in value:
             if "task_name" not in update:
                 raise ValidationError("각 업데이트에 task_name이 필요합니다.")
