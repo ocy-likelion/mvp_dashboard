@@ -1,11 +1,11 @@
 from flask import Blueprint, request
-from datetime import datetime
 from app.models.db import get_db_session
-from app.models.models import UserLastCheck, Notice, Issue, IssueComment
 from app.utils.notifications import SlackNotifier
 import logging
 
 from app.serializers import (
+    NotificationSerializer,
+    handle_serialization_errors,
     json_response,
     error_json_response,
 )
@@ -16,6 +16,7 @@ slack_notifier = SlackNotifier()
 
 
 @notifications_bp.route("/notifications/unread-count", methods=["GET"])
+@handle_serialization_errors
 def get_unread_count():
     """
     사용자별 미확인 알림 개수 조회 API
@@ -37,73 +38,17 @@ def get_unread_count():
         description: 서버 오류
     """
     try:
-        username = request.args.get("username")
-        if not username:
-            return error_json_response("사용자명이 필요합니다.", status_code=400)
+        # 쿼리 파라미터를 딕셔너리로 변환
+        query_data = {"username": request.args.get("username")}
 
         session = get_db_session()
         try:
-            # 사용자의 마지막 확인 시간 조회
-            last_check = (
-                session.query(UserLastCheck)
-                .filter(UserLastCheck.username == username)
-                .first()
-            )
-
-            if not last_check:
-                # 첫 로그인인 경우 현재 시간으로 초기화
-                last_check = UserLastCheck(
-                    username=username,
-                    last_notice_check=datetime.now(),
-                    last_issue_check=datetime.now(),
-                    last_comment_check=datetime.now(),
-                )
-                session.add(last_check)
-                session.commit()
-                return json_response(
-                    data={
-                        "new_notices": 0,
-                        "new_issues": 0,
-                        "new_comments": 0,
-                    },
-                    message="미확인 알림 개수 조회 성공",
-                    status_code=200,
-                )
-
-            # 새로운 항목 개수 조회
-            new_notices = (
-                session.query(Notice)
-                .filter(
-                    Notice.date > last_check.last_notice_check,
-                    Notice.is_deleted == False,
-                )
-                .count()
-            )
-
-            new_issues = (
-                session.query(Issue)
-                .filter(Issue.created_at > last_check.last_issue_check)
-                .count()
-            )
-
-            new_comments = (
-                session.query(IssueComment)
-                .filter(IssueComment.created_at > last_check.last_comment_check)
-                .count()
-            )
-
-            # 현재 시간으로 마지막 확인 시간 업데이트
-            last_check.last_notice_check = datetime.now()
-            last_check.last_issue_check = datetime.now()
-            last_check.last_comment_check = datetime.now()
+            # Serializer를 사용한 미확인 알림 개수 조회 (검증 포함)
+            unread_counts = NotificationSerializer.get_unread_count(session, query_data)
             session.commit()
 
             return json_response(
-                data={
-                    "new_notices": new_notices,
-                    "new_issues": new_issues,
-                    "new_comments": new_comments,
-                },
+                data=unread_counts,
                 message="미확인 알림 개수 조회 성공",
                 status_code=200,
             )
