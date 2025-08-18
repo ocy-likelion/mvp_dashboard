@@ -1,7 +1,7 @@
 from flask import Blueprint, request
 import logging
 from app.models.db import get_db_session
-from app.models.models import Notice, NoticeRead
+from app.models.models import NoticeRead
 from app.utils.notifications import SlackNotifier
 from app.serializers import (
     NoticeSerializer,
@@ -61,34 +61,12 @@ def add_notice():
         if not data:
             return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        # 스키마를 사용한 데이터 검증
-        validated_data = NoticeSerializer.deserialize_notice_create(data)
-
-        # 허용된 사용자 확인
-        allowed_users = ["김은지", "장지연", "김슬기"]
-        if validated_data.get("created_by") not in allowed_users:
-            return error_json_response(
-                "공지사항 작성 권한이 없습니다.", status_code=403
-            )
-
-        # DB 작업 - ORM 사용
+        # DB 작업 - Serializer 사용
         session = get_db_session()
         try:
-            # 공지사항 생성
-            notice = Notice(
-                title=validated_data["title"],
-                content=validated_data["content"],
-                type=validated_data.get("type", "공지사항"),
-                created_by=validated_data.get("created_by"),
-            )
-
-            session.add(notice)
+            # Serializer를 사용한 공지사항 추가 (검증 포함)
+            notice_data = NoticeSerializer.add_notice(session, data)
             session.commit()
-
-            notice_id = notice.id
-
-            # 저장된 공지사항 직렬화
-            serialized_notice = NoticeSerializer.serialize_notice(notice)
 
         except Exception as e:
             session.rollback()
@@ -101,10 +79,10 @@ def add_notice():
 
         # Slack 알림 전송 (channel -> channel_type으로 수정)
         notifier = SlackNotifier()
-        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {validated_data['title']}\n작성자: {validated_data['created_by']}"
+        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {notice_data['title']}\n작성자: {notice_data['created_by']}"
         notifier.send_notification(notification_message, channel_type="notice")
 
-        return json_response(serialized_notice, status_code=201)
+        return json_response(notice_data, status_code=201)
     except Exception as e:
         logger.error(f"공지사항 추가 중 오류: {str(e)}")
         return error_json_response("공지사항 추가 실패", status_code=500)
@@ -126,24 +104,8 @@ def get_notices():
     try:
         session = get_db_session()
 
-        # ORM을 사용하여 공지사항 조회
-        notices_query = (
-            session.query(Notice)
-            .filter(Notice.is_deleted == False)
-            .order_by(Notice.date.desc())
-        )
-        notices = []
-
-        for notice in notices_query.all():
-            notice_dict = {
-                "id": notice.id,
-                "type": notice.type or "공지사항",
-                "title": notice.title,
-                "content": notice.content,
-                "date": notice.date.strftime("%Y-%m-%d %H:%M:%S"),
-                "created_by": notice.created_by,
-            }
-            notices.append(notice_dict)
+        # Serializer를 사용한 공지사항 조회
+        notices = NoticeSerializer.get_notices(session)
 
         session.close()
         return json_response({"data": notices}), 200
@@ -202,35 +164,11 @@ def update_notice(notice_id):
         if not data:
             return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        # 스키마를 사용한 데이터 검증
-        validated_data = NoticeSerializer.deserialize_notice_update(data)
-
-        # 수정자 정보 추출
-        username = validated_data.get("username")
-
-        if not username:
-            return error_json_response("수정자 정보가 누락되었습니다.", status_code=400)
-
         session = get_db_session()
         try:
-            # 공지사항 존재 확인
-            notice = session.query(Notice).filter(Notice.id == notice_id).first()
-
-            if not notice:
-                return error_json_response(
-                    "해당 공지사항을 찾을 수 없습니다.", status_code=404
-                )
-
-            # 공지사항 업데이트
-            notice.title = validated_data.get("title")
-            notice.content = validated_data.get("content")
-            notice.type = validated_data.get("type")
-            notice.modified_by = username
-
+            # Serializer를 사용한 공지사항 수정 (검증 포함)
+            serialized_notice = NoticeSerializer.update_notice(session, notice_id, data)
             session.commit()
-
-            # 수정된 공지사항 직렬화
-            serialized_notice = NoticeSerializer.serialize_notice(notice)
 
         except Exception as e:
             session.rollback()
@@ -278,20 +216,9 @@ def delete_notice(notice_id):
     try:
         session = get_db_session()
         try:
-            # 공지사항 존재 확인
-            notice = session.query(Notice).filter(Notice.id == notice_id).first()
-
-            if not notice:
-                return error_json_response(
-                    "해당 공지사항을 찾을 수 없습니다.", status_code=404
-                )
-
-            # 공지사항 삭제 (soft delete)
-            notice.is_deleted = True
+            # Serializer를 사용한 공지사항 삭제
+            serialized_notice = NoticeSerializer.delete_notice(session, notice_id)
             session.commit()
-
-            # 삭제된 공지사항 직렬화
-            serialized_notice = NoticeSerializer.serialize_notice(notice)
 
         except Exception as e:
             session.rollback()
@@ -351,43 +278,11 @@ def mark_notice_read():
         if not data:
             return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        # 스키마를 사용한 데이터 검증
-        validated_data = NoticeSerializer.deserialize_notice_read(data)
-
-        notice_id = validated_data.get("notice_id")
-        username = validated_data.get("username")
-
-        if not notice_id or not username:
-            return error_json_response(
-                "공지사항 ID와 사용자 이름이 필요합니다.", status_code=400
-            )
-
         session = get_db_session()
         try:
-            # 공지사항 존재 확인
-            notice = session.query(Notice).filter(Notice.id == notice_id).first()
-            if not notice:
-                return error_json_response(
-                    "공지사항을 찾을 수 없습니다.", status_code=404
-                )
-
-            # 이미 읽었는지 확인
-            existing_read = (
-                session.query(NoticeRead)
-                .filter(
-                    NoticeRead.notice_id == notice_id, NoticeRead.username == username
-                )
-                .first()
-            )
-
-            if not existing_read:
-                # 읽음 표시 추가
-                notice_read = NoticeRead(notice_id=notice_id, username=username)
-                session.add(notice_read)
-                session.commit()
-
-            # 읽음 표시 직렬화
-            serialized_notice_read = NoticeSerializer.serialize_notice_read(notice_read)
+            # Serializer를 사용한 공지사항 읽음 표시 (검증 포함)
+            serialized_notice_read = NoticeSerializer.mark_notice_read(session, data)
+            session.commit()
 
         except Exception as e:
             session.rollback()
@@ -427,26 +322,10 @@ def get_notice_reads():
     try:
         notice_id = request.args.get("notice_id")
 
-        if not notice_id:
-            return error_json_response("공지사항 ID가 필요합니다.", status_code=400)
-
         session = get_db_session()
         try:
-            # 공지사항 읽음 기록 조회
-            reads_query = (
-                session.query(NoticeRead)
-                .filter(NoticeRead.notice_id == notice_id)
-                .order_by(NoticeRead.read_at.desc())
-            )
-
-            reads_data = []
-            for notice_read in reads_query.all():
-                reads_data.append(
-                    {
-                        "username": notice_read.username,
-                        "read_at": notice_read.read_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    }
-                )
+            # Serializer를 사용한 공지사항 읽음 목록 조회 (검증 포함)
+            reads_data = NoticeSerializer.get_notice_reads(session, notice_id)
 
             session.close()
             return json_response({"data": reads_data}), 200
