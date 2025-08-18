@@ -1,12 +1,8 @@
 from flask import Blueprint, request, session
 import logging
 from app.models.db import get_db_session
-from app.models.models import User
-from app.utils.password import (
-    hash_password,
-    verify_password,
-    validate_password_strength,
-)
+
+
 from app.serializers import (
     UserSerializer,
     json_response,
@@ -54,35 +50,16 @@ def login():
     if not data:
         return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-    # 스키마를 사용한 데이터 검증
-    validated_data = UserSerializer.deserialize_user_login(data)
-
     try:
         session_db = get_db_session()
         try:
-            # 사용자 조회
-            user = (
-                session_db.query(User)
-                .filter(User.username == validated_data["username"])
-                .first()
-            )
-
-            if not user:
-                return error_json_response(
-                    "잘못된 ID 또는 비밀번호입니다.", status_code=401
-                )
-
-            # 비밀번호 검증 (bcrypt 사용)
-            if not verify_password(validated_data["password"], user.password):
-                return error_json_response(
-                    "잘못된 ID 또는 비밀번호입니다.", status_code=401
-                )
+            # Serializer를 사용한 로그인 처리 (검증 포함)
+            user_data = UserSerializer.login(session_db, data)
 
         finally:
             session_db.close()
 
         session.permanent = True  # 세션을 영구적으로 설정
-        user_data = {"id": user.id, "username": user.username}
         session["user"] = user_data
 
         return json_response(
@@ -170,42 +147,10 @@ def change_password():
         if not data:
             return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        # 필수 필드 검증
-        required_fields = ["username", "current_password", "new_password"]
-        for field in required_fields:
-            if not data.get(field):
-                return error_json_response(
-                    f"{field} 필드가 필요합니다.", status_code=400
-                )
-
-        # 새 비밀번호 강도 검증
-        is_valid, error_message = validate_password_strength(data["new_password"])
-        if not is_valid:
-            return error_json_response(error_message, status_code=400)
-
         session_db = get_db_session()
         try:
-            # 현재 비밀번호 확인
-            user = (
-                session_db.query(User).filter(User.username == data["username"]).first()
-            )
-
-            if not user:
-                return error_json_response(
-                    "사용자명 또는 현재 비밀번호가 일치하지 않습니다.", status_code=401
-                )
-
-            # 현재 비밀번호 검증 (bcrypt 사용)
-            if not verify_password(data["current_password"], user.password):
-                return error_json_response(
-                    "사용자명 또는 현재 비밀번호가 일치하지 않습니다.", status_code=401
-                )
-
-            # 새 비밀번호 해싱
-            hashed_new_password = hash_password(data["new_password"])
-
-            # 비밀번호 업데이트
-            user.password = hashed_new_password
+            # Serializer를 사용한 비밀번호 변경 (검증 포함)
+            UserSerializer.change_password(session_db, data)
             session_db.commit()
 
             return json_response(
