@@ -1,10 +1,9 @@
 from flask import Blueprint, request
-from datetime import datetime, timedelta
 import logging
 from app.models.db import get_db_session
-from app.models.models import TaskItem, TaskChecklist
 from app.serializers import (
     TaskSerializer,
+    UncheckedSerializer,
     json_response,
     error_json_response,
     handle_serialization_errors,
@@ -39,16 +38,8 @@ def get_tasks():
 
         session = get_db_session()
 
-        # ORM을 사용하여 업무 조회
-        tasks_query = session.query(TaskItem).order_by(TaskItem.id.asc())
-
-        if task_category:
-            tasks_query = tasks_query.filter(TaskItem.task_category == task_category)
-
-        tasks = tasks_query.all()
-
-        # Serializer를 사용한 데이터 직렬화
-        serialized_tasks = TaskSerializer.serialize_task_items(tasks)
+        # Serializer를 사용한 업무 체크리스트 조회
+        serialized_tasks = TaskSerializer.get_tasks(session, task_category)
 
         session.close()
 
@@ -61,6 +52,7 @@ def get_tasks():
 
 
 @tasks_bp.route("/tasks", methods=["POST"])
+@handle_serialization_errors
 def save_tasks():
     """
     업무 체크리스트 저장 API (동일 날짜 데이터는 업데이트)
@@ -101,61 +93,13 @@ def save_tasks():
     """
     try:
         data = request.json
-        updates = data.get("updates")
-        training_course = data.get("training_course")
-        username = data.get("username")  # 프론트엔드에서 전달받은 username
-
-        if not updates or not training_course or not username:
-            return error_json_response(
-                "업데이트 데이터, 훈련 과정명, 사용자명이 모두 필요합니다.",
-                status_code=400,
-            )
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
         session = get_db_session()
         try:
-            # 현재 날짜 가져오기 (시간 제외)
-            current_date = datetime.now().date()
-
-            for update in updates:
-                task_name = update.get("task_name")
-                is_checked = update.get("is_checked", False)
-
-                # task_id 찾기
-                task = (
-                    session.query(TaskItem)
-                    .filter(TaskItem.task_name == task_name)
-                    .first()
-                )
-                if not task:
-                    continue
-
-                # 동일 날짜의 기존 데이터 확인
-                existing_record = (
-                    session.query(TaskChecklist)
-                    .filter(
-                        TaskChecklist.task_id == task.id,
-                        TaskChecklist.training_course == training_course,
-                        TaskChecklist.checked_date >= current_date,
-                        TaskChecklist.checked_date < current_date + timedelta(days=1),
-                    )
-                    .first()
-                )
-
-                if existing_record:
-                    # 기존 데이터가 있으면 업데이트
-                    existing_record.is_checked = is_checked
-                    existing_record.checked_date = datetime.now()
-                    existing_record.username = username
-                else:
-                    # 기존 데이터가 없으면 새로 삽입
-                    checklist = TaskChecklist(
-                        task_id=task.id,
-                        training_course=training_course,
-                        is_checked=is_checked,
-                        username=username,
-                    )
-                    session.add(checklist)
-
+            # Serializer를 사용한 체크리스트 저장/업데이트 (검증 포함)
+            TaskSerializer.save_task_checklist(session, data)
             session.commit()
 
         except Exception as e:
@@ -177,6 +121,7 @@ def save_tasks():
 
 
 @tasks_bp.route("/tasks/update", methods=["PUT"])
+@handle_serialization_errors
 def update_tasks():
     """
     당일 업무 체크리스트 업데이트 API
@@ -219,58 +164,17 @@ def update_tasks():
     """
     try:
         data = request.json
-        updates = data.get("updates")
-        training_course = data.get("training_course")
-
-        # 현재 날짜만 사용 (시간 제외)
-        today = datetime.now().date()
-
-        if not updates or not training_course:
-            return error_json_response(
-                "업데이트할 데이터와 훈련 과정명이 필요합니다.", status_code=400
-            )
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
         session = get_db_session()
         try:
-            updated_count = 0
-            not_found_items = []
-
-            for update in updates:
-                task_name = update.get("task_name")
-                is_checked = update.get("is_checked", False)
-
-                # task_id 찾기
-                task = (
-                    session.query(TaskItem)
-                    .filter(TaskItem.task_name == task_name)
-                    .first()
-                )
-                if not task:
-                    not_found_items.append(task_name)
-                    continue
-
-                # 당일 날짜의 기존 데이터 확인
-                existing_record = (
-                    session.query(TaskChecklist)
-                    .filter(
-                        TaskChecklist.task_id == task.id,
-                        TaskChecklist.training_course == training_course,
-                        TaskChecklist.checked_date >= today,
-                        TaskChecklist.checked_date < today + timedelta(days=1),
-                    )
-                    .first()
-                )
-
-                if existing_record:
-                    # 기존 데이터가 있으면 업데이트
-                    existing_record.is_checked = is_checked
-                    existing_record.checked_date = datetime.now()
-                    updated_count += 1
-                else:
-                    # 업데이트할 데이터가 없음
-                    not_found_items.append(task_name)
-
+            # Serializer를 사용한 체크리스트 업데이트 (검증 포함)
+            result = TaskSerializer.update_task_checklist(session, data)
             session.commit()
+
+            updated_count = result["updated_count"]
+            not_found_items = result["not_found_items"]
 
         except Exception as e:
             session.rollback()
@@ -322,26 +226,8 @@ def get_irregular_tasks():
     try:
         session = get_db_session()
 
-        # 비정기 업무는 UncheckedDescription 모델을 사용
-        from app.models.models import UncheckedDescription
-
-        # 가장 최근 상태만 조회 (resolved=False인 항목들)
-        tasks_query = (
-            session.query(UncheckedDescription)
-            .filter(UncheckedDescription.resolved == False)
-            .order_by(UncheckedDescription.created_at.desc())
-        )
-
-        tasks = []
-        for task in tasks_query.all():
-            tasks.append(
-                {
-                    "id": task.id,
-                    "task_name": task.content,
-                    "is_checked": task.resolved,
-                    "checked_date": task.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            )
+        # Serializer를 사용한 비정기 업무 조회
+        tasks = UncheckedSerializer.get_irregular_tasks(session)
 
         session.close()
 
@@ -355,6 +241,7 @@ def get_irregular_tasks():
 
 
 @tasks_bp.route("/irregular_tasks", methods=["POST"])
+@handle_serialization_errors
 def save_irregular_tasks():
     """
     비정기 업무 체크리스트 추가 저장 API
@@ -390,30 +277,13 @@ def save_irregular_tasks():
     """
     try:
         data = request.json
-        updates = data.get("updates")
-        training_course = data.get("training_course")
-
-        if not updates or not training_course:
-            return error_json_response(
-                "업데이트 데이터와 훈련 과정명이 필요합니다.", status_code=400
-            )
+        if not data:
+            return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
         session = get_db_session()
         try:
-            from app.models.models import UncheckedDescription
-
-            for update in updates:
-                task_name = update.get("task_name")
-                is_checked = update.get("is_checked")
-
-                # 비정기 업무 저장
-                irregular_task = UncheckedDescription(
-                    content=task_name,
-                    training_course=training_course,
-                    resolved=is_checked,
-                )
-                session.add(irregular_task)
-
+            # Serializer를 사용한 비정기 업무 저장 (검증 포함)
+            UncheckedSerializer.save_irregular_tasks(session, data)
             session.commit()
 
         except Exception as e:
