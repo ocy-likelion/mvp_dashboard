@@ -3,6 +3,9 @@ from marshmallow import ValidationError, Schema
 from flask import jsonify
 import bcrypt
 import re
+from datetime import datetime, timedelta
+
+# 모든 스키마 imports
 from app.schemas import (
     # 단일 객체 스키마
     user_schema,
@@ -16,7 +19,6 @@ from app.schemas import (
     unchecked_description_schema,
     unchecked_comment_schema,
     training_info_schema,
-    user_last_check_schema,
     # 다중 객체 스키마
     users_schema,
     attendances_schema,
@@ -29,7 +31,6 @@ from app.schemas import (
     unchecked_descriptions_schema,
     unchecked_comments_schema,
     training_infos_schema,
-    user_last_checks_schema,
     # 생성/수정 스키마
     user_create_schema,
     user_update_schema,
@@ -46,7 +47,6 @@ from app.schemas import (
     unchecked_comment_create_schema,
     training_info_create_schema,
     training_info_update_schema,
-    user_last_check_update_schema,
     # 추가 검증용 스키마
     task_update_schema,
     irregular_task_create_schema,
@@ -54,12 +54,27 @@ from app.schemas import (
     notice_read_create_schema,
     notice_delete_schema,
     issue_resolve_schema,
-    attendance_time_schema,
     notification_query_schema,
     # 응답 스키마
     response_schema,
     error_schema,
     pagination_schema,
+)
+
+# 모든 모델 imports
+from app.models.models import (
+    User,
+    Attendance,
+    Issue,
+    IssueComment,
+    Notice,
+    NoticeRead,
+    TaskItem,
+    TaskChecklist,
+    UncheckedDescription,
+    UncheckedComment,
+    TrainingInfo,
+    UserLastCheck,
 )
 
 
@@ -318,17 +333,66 @@ class UserSerializer:
 
     @staticmethod
     def is_hashed_password(password: str) -> bool:
-        """
-        비밀번호가 이미 해싱되어 있는지 확인합니다.
+        """비밀번호가 이미 해시되었는지 확인"""
+        return password.startswith("$2b$")
 
-        Args:
-            password (str): 확인할 비밀번호
+    @staticmethod
+    def login(session, data: Dict) -> Dict:
+        """로그인 처리"""
+        # 데이터 검증
+        validated_data = UserSerializer.deserialize_user_login(data)
+        
+        # 사용자 조회
+        user = (
+            session.query(User)
+            .filter(User.username == validated_data["username"])
+            .first()
+        )
 
-        Returns:
-            bool: 해싱된 비밀번호이면 True, 평문이면 False
-        """
-        # bcrypt 해시는 항상 $2b$로 시작하고 특정 길이를 가집니다
-        return password.startswith("$2b$") and len(password) == 60
+        if not user:
+            raise ValueError("잘못된 ID 또는 비밀번호입니다.")
+
+        # 비밀번호 검증 (bcrypt 사용)
+        if not UserSerializer.verify_password(
+            validated_data["password"], user.password
+        ):
+            raise ValueError("잘못된 ID 또는 비밀번호입니다.")
+        
+        return {
+            "user_id": user.id,
+            "username": user.username,
+            "role": user.role
+        }
+
+    @staticmethod
+    def change_password(session, data: Dict):
+        """비밀번호 변경"""
+        # 데이터 검증
+        validated_data = UserSerializer.deserialize_password_change(data)
+        
+        # 현재 비밀번호 확인
+        user = (
+            session.query(User)
+            .filter(User.username == validated_data["username"])
+            .first()
+        )
+
+        if not user:
+            raise ValueError("사용자명 또는 현재 비밀번호가 일치하지 않습니다.")
+
+        # 현재 비밀번호 검증 (bcrypt 사용)
+        if not UserSerializer.verify_password(
+            validated_data["current_password"], user.password
+        ):
+            raise ValueError("사용자명 또는 현재 비밀번호가 일치하지 않습니다.")
+
+        # 새 비밀번호 해싱
+        hashed_new_password = UserSerializer.hash_password(
+            validated_data["new_password"]
+        )
+        
+        user.password = hashed_new_password
+        return user
 
 
 class AttendanceSerializer:
@@ -350,9 +414,51 @@ class AttendanceSerializer:
         return Serializer.deserialize(data, attendance_create_schema)
 
     @staticmethod
-    def deserialize_attendance_time(data: Dict) -> Dict:
-        """출퇴근 시간 데이터 역직렬화"""
-        return Serializer.deserialize(data, attendance_time_schema)
+    def save_attendance(session, data: Dict):
+        """출퇴근 기록 저장"""
+        # 데이터 검증
+        validated_data = AttendanceSerializer.deserialize_attendance_create(data)
+        
+        # 시간 문자열을 Time 객체로 변환
+        check_in_time = (
+            datetime.strptime(
+                validated_data.get("check_in_time", ""), "%H:%M"
+            ).time()
+            if validated_data.get("check_in_time")
+            else None
+        )
+        check_out_time = (
+            datetime.strptime(
+                validated_data.get("check_out_time", ""), "%H:%M"
+            ).time()
+            if validated_data.get("check_out_time")
+            else None
+        )
+
+        attendance = Attendance(
+            date=validated_data["date"],
+            instructor=validated_data.get("instructor"),
+            instructor_name=validated_data.get("instructor_name"),
+            training_course=validated_data.get("training_course"),
+            check_in_time=check_in_time,
+            check_out_time=check_out_time,
+            daily_log=validated_data.get("daily_log", False),
+        )
+
+        session.add(attendance)
+        session.flush()  # ID를 얻기 위해 flush
+        
+        # 저장된 데이터 직렬화
+        return AttendanceSerializer.serialize_attendance(attendance)
+
+    @staticmethod
+    def get_attendance(session) -> List[Dict]:
+        """출퇴근 기록 조회"""
+        attendance_query = session.query(Attendance).order_by(Attendance.date.desc())
+        attendance_records = attendance_query.all()
+
+        # Serializer를 사용한 데이터 직렬화
+        return AttendanceSerializer.serialize_attendances(attendance_records)
 
 
 class IssueSerializer:
@@ -392,6 +498,138 @@ class IssueSerializer:
     def deserialize_issue_resolve(data: Dict) -> Dict:
         """이슈 해결 데이터 역직렬화"""
         return Serializer.deserialize(data, issue_resolve_schema)
+
+    @staticmethod
+    def create_issue(session, data: Dict) -> Dict:
+        """이슈 생성"""
+        # 데이터 검증
+        validated_data = IssueSerializer.deserialize_issue_create(data)
+        
+        # 이슈 생성
+        issue = Issue(
+            content=validated_data["content"],
+            training_course=validated_data.get("training_course"),
+            username=validated_data.get("username"),
+            created_by=validated_data.get(
+                "created_by", validated_data.get("username")
+            ),
+            date=validated_data.get("date"),
+            resolved=False,
+        )
+
+        session.add(issue)
+        session.flush()  # ID를 얻기 위해 flush
+        
+        return {
+            "id": issue.id,
+            **validated_data
+        }
+
+    @staticmethod
+    def get_issues(session) -> List[Dict]:
+        """해결되지 않은 이슈 목록 조회"""
+        # ORM을 사용하여 해결되지 않은 이슈 조회
+        issues_query = (
+            session.query(Issue)
+            .filter(Issue.resolved == False)
+            .order_by(Issue.created_at.desc())
+        )
+        issues = issues_query.all()
+
+        # Serializer를 사용한 데이터 직렬화
+        serialized_issues = IssueSerializer.serialize_issues(issues)
+
+        # 교육과정별로 그룹화
+        issues_grouped = {}
+        for issue, serialized_issue in zip(issues, serialized_issues):
+            course = issue.training_course
+            if course not in issues_grouped:
+                issues_grouped[course] = []
+
+            # 댓글 조회 및 직렬화
+            comments = (
+                session.query(IssueComment)
+                .filter(IssueComment.issue_id == issue.id)
+                .all()
+            )
+            serialized_comments = IssueSerializer.serialize_issue_comments(comments)
+
+            # 댓글 정보를 이슈에 추가
+            serialized_issue["comments"] = serialized_comments
+            issues_grouped[course].append(serialized_issue)
+
+        # 응답 형식 변환
+        response_data = [
+            {"training_course": course, "issues": issues_list}
+            for course, issues_list in issues_grouped.items()
+        ]
+        
+        return response_data
+
+    @staticmethod
+    def add_comment(session, data: Dict):
+        """이슈 댓글 추가"""
+        # 데이터 검증
+        validated_data = IssueSerializer.deserialize_issue_comment_create(data)
+        
+        # 댓글 생성
+        comment = IssueComment(
+            issue_id=validated_data["issue_id"],
+            comment=validated_data["comment"],
+            created_by=validated_data["created_by"],
+        )
+
+        session.add(comment)
+        session.flush()  # ID를 얻기 위해 flush
+        
+        return {
+            "id": comment.id,
+            **validated_data
+        }
+
+    @staticmethod
+    def resolve_issue(session, data: Dict):
+        """이슈 해결"""
+        # 데이터 검증
+        validated_data = IssueSerializer.deserialize_issue_resolve(data)
+        
+        issue = (
+            session.query(Issue)
+            .filter(Issue.id == validated_data["issue_id"])
+            .first()
+        )
+        if not issue:
+            raise ValueError("이슈를 찾을 수 없습니다.")
+
+        issue.resolved = True
+        
+        # 업데이트된 이슈 직렬화
+        return IssueSerializer.serialize_issue(issue)
+
+    @staticmethod
+    def get_issue_comments(session, issue_id: str) -> List[Dict]:
+        """특정 이슈에 대한 댓글 목록 조회"""
+        if not issue_id:
+            raise ValueError("이슈 ID를 입력하세요.")
+        
+        comments_query = (
+            session.query(IssueComment)
+            .filter(IssueComment.issue_id == issue_id)
+            .order_by(IssueComment.created_at.asc())
+        )
+
+        comments = comments_query.all()
+
+        # Serializer를 사용한 데이터 직렬화
+        return IssueSerializer.serialize_issue_comments(comments)
+
+    @staticmethod
+    def get_all_issues(session) -> List[Dict]:
+        """모든 이슈 목록 조회 (다운로드용)"""
+        issues_query = session.query(Issue).all()
+
+        # Serializer를 사용한 데이터 직렬화
+        return IssueSerializer.serialize_issues(issues_query)
 
 
 class NoticeSerializer:
@@ -436,6 +674,165 @@ class NoticeSerializer:
     def deserialize_notice_delete(data: Dict) -> Dict:
         """공지사항 삭제 데이터 역직렬화"""
         return Serializer.deserialize(data, notice_delete_schema)
+
+    @staticmethod
+    def add_notice(session, data: Dict) -> Dict:
+        """공지사항 추가"""
+        # 데이터 검증
+        validated_data = NoticeSerializer.deserialize_notice_create(data)
+        
+        # 허용된 사용자 확인
+        allowed_users = ["김은지", "장지연", "김슬기"]
+        if validated_data.get("created_by") not in allowed_users:
+            raise ValueError("공지사항 작성 권한이 없습니다.")
+        
+        # 공지사항 생성
+        notice = Notice(
+            title=validated_data["title"],
+            content=validated_data["content"],
+            type=validated_data.get("type", "공지사항"),
+            created_by=validated_data.get("created_by"),
+        )
+
+        session.add(notice)
+        session.flush()  # ID를 얻기 위해 flush
+        
+        # 저장된 공지사항 직렬화
+        serialized_notice = NoticeSerializer.serialize_notice(notice)
+        
+        return {
+            "id": notice.id,
+            **serialized_notice
+        }
+
+    @staticmethod
+    def get_notices(session) -> List[Dict]:
+        """공지사항 조회"""
+        # ORM을 사용하여 공지사항 조회
+        notices_query = (
+            session.query(Notice)
+            .filter(Notice.is_deleted == False)
+            .order_by(Notice.date.desc())
+        )
+        notices = []
+
+        for notice in notices_query.all():
+            notice_dict = {
+                "id": notice.id,
+                "type": notice.type or "공지사항",
+                "title": notice.title,
+                "content": notice.content,
+                "date": notice.date.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_by": notice.created_by,
+            }
+            notices.append(notice_dict)
+        
+        return notices
+
+    @staticmethod
+    def update_notice(session, notice_id: int, data: Dict):
+        """공지사항 수정"""
+        # 데이터 검증
+        validated_data = NoticeSerializer.deserialize_notice_update(data)
+        
+        # 수정자 정보 추출
+        username = validated_data.get("username")
+
+        if not username:
+            raise ValueError("수정자 정보가 누락되었습니다.")
+        
+        # 공지사항 존재 확인
+        notice = session.query(Notice).filter(Notice.id == notice_id).first()
+
+        if not notice:
+            raise ValueError("해당 공지사항을 찾을 수 없습니다.")
+
+        # 공지사항 업데이트
+        notice.title = validated_data.get("title")
+        notice.content = validated_data.get("content")
+        notice.type = validated_data.get("type")
+        notice.modified_by = username
+        
+        # 수정된 공지사항 직렬화
+        return NoticeSerializer.serialize_notice(notice)
+
+    @staticmethod
+    def delete_notice(session, notice_id: int):
+        """공지사항 삭제 (soft delete)"""
+        # 공지사항 존재 확인
+        notice = session.query(Notice).filter(Notice.id == notice_id).first()
+
+        if not notice:
+            raise ValueError("해당 공지사항을 찾을 수 없습니다.")
+
+        # 공지사항 삭제 (soft delete)
+        notice.is_deleted = True
+        
+        # 삭제된 공지사항 직렬화
+        return NoticeSerializer.serialize_notice(notice)
+
+    @staticmethod
+    def mark_notice_read(session, data: Dict):
+        """공지사항 읽음 표시"""
+        # 데이터 검증
+        validated_data = NoticeSerializer.deserialize_notice_read_create(data)
+        
+        # 공지사항 존재 확인
+        notice = (
+            session.query(Notice)
+            .filter(Notice.id == validated_data["notice_id"])
+            .first()
+        )
+        if not notice:
+            raise ValueError("공지사항을 찾을 수 없습니다.")
+
+        # 이미 읽었는지 확인
+        existing_read = (
+            session.query(NoticeRead)
+            .filter(
+                NoticeRead.notice_id == validated_data["notice_id"],
+                NoticeRead.username == validated_data["username"],
+            )
+            .first()
+        )
+
+        if not existing_read:
+            # 읽음 표시 추가
+            notice_read = NoticeRead(
+                notice_id=validated_data["notice_id"],
+                username=validated_data["username"],
+            )
+            session.add(notice_read)
+            session.flush()  # ID를 얻기 위해 flush
+        else:
+            notice_read = existing_read
+        
+        # 읽음 표시 직렬화
+        return NoticeSerializer.serialize_notice_read(notice_read)
+
+    @staticmethod
+    def get_notice_reads(session, notice_id: str) -> List[Dict]:
+        """공지사항별 읽은 사용자 목록 조회"""
+        if not notice_id:
+            raise ValueError("공지사항 ID가 필요합니다.")
+        
+        # 공지사항 읽음 기록 조회
+        reads_query = (
+            session.query(NoticeRead)
+            .filter(NoticeRead.notice_id == notice_id)
+            .order_by(NoticeRead.read_at.desc())
+        )
+
+        reads_data = []
+        for notice_read in reads_query.all():
+            reads_data.append(
+                {
+                    "username": notice_read.username,
+                    "read_at": notice_read.read_at.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+        
+        return reads_data
 
 
 class TaskSerializer:
@@ -484,9 +881,6 @@ class TaskSerializer:
     @staticmethod
     def save_task_checklist(session, data: Dict):
         """체크리스트 저장/업데이트"""
-        from datetime import datetime, timedelta
-        from app.models.models import TaskItem, TaskChecklist
-
         # 데이터 검증
         validated_data = TaskSerializer.deserialize_task_update(data)
 
@@ -534,9 +928,6 @@ class TaskSerializer:
     @staticmethod
     def update_task_checklist(session, data: Dict) -> Dict:
         """체크리스트 업데이트 (당일 데이터만)"""
-        from datetime import datetime, timedelta
-        from app.models.models import TaskItem, TaskChecklist
-
         # 데이터 검증
         validated_data = TaskSerializer.deserialize_task_update(data)
 
@@ -584,8 +975,6 @@ class TaskSerializer:
     @staticmethod
     def get_tasks(session, task_category: str = None) -> List[Dict]:
         """업무 체크리스트 조회"""
-        from app.models.models import TaskItem
-
         # ORM을 사용하여 업무 조회
         tasks_query = session.query(TaskItem).order_by(TaskItem.id.asc())
 
@@ -641,8 +1030,6 @@ class UncheckedSerializer:
     @staticmethod
     def get_irregular_tasks(session) -> List[Dict]:
         """비정기 업무 목록 조회"""
-        from app.models.models import UncheckedDescription
-
         # 가장 최근 상태만 조회 (resolved=False인 항목들)
         tasks_query = (
             session.query(UncheckedDescription)
@@ -668,10 +1055,6 @@ class UncheckedSerializer:
         session, task_name: str, training_course: str, is_checked: bool
     ):
         """비정기 업무 생성"""
-        from app.models.models import (
-            UncheckedDescription,
-        )  # Temporarily here, should be refactored to a repository
-
         irregular_task = UncheckedDescription(
             content=task_name,
             training_course=training_course,
@@ -694,6 +1077,139 @@ class UncheckedSerializer:
             UncheckedSerializer.create_irregular_task(
                 session, task_name, validated_data["training_course"], is_checked
             )
+
+    @staticmethod
+    def get_unchecked_descriptions(session) -> List[Dict]:
+        """미체크 항목 설명 및 액션 플랜 조회 (부서명 포함)"""
+        unchecked_items = []
+        items = (
+            session.query(UncheckedDescription)
+            .filter(UncheckedDescription.resolved == False)
+            .order_by(UncheckedDescription.created_at.desc())
+            .all()
+        )
+
+        for item in items:
+            # 부서명 조회
+            dept = None
+            if item.training_course:
+                training_info = (
+                    session.query(TrainingInfo)
+                    .filter(TrainingInfo.training_course == item.training_course)
+                    .first()
+                )
+                if training_info:
+                    dept = training_info.dept
+
+            # due days 조회 (task_items에서 매칭되는 항목 찾기)
+            due_days = 3  # 기본값
+            if item.content:
+                task_item = (
+                    session.query(TaskItem)
+                    .filter(
+                        TaskItem.task_name.in_(
+                            [
+                                task_name
+                                for task_name in session.query(TaskItem.task_name).all()
+                            ]
+                        )
+                    )
+                    .filter(
+                        item.content.like(f"%{TaskItem.task_name}%에 대한 미체크 사유")
+                    )
+                    .first()
+                )
+                if task_item:
+                    due_days = task_item.due or 3
+
+            # 마감일 계산
+            deadline = item.created_at.date() + timedelta(days=due_days)
+            is_overdue = datetime.now().date() > deadline
+
+            unchecked_items.append(
+                {
+                    "id": item.id,
+                    "content": item.content,
+                    "action_plan": item.action_plan,
+                    "training_course": item.training_course,
+                    "dept": dept,
+                    "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "resolved": item.resolved,
+                    "due_days": due_days,
+                    "deadline": deadline.strftime("%Y-%m-%d"),
+                    "is_overdue": is_overdue,
+                }
+            )
+        
+        return unchecked_items
+
+    @staticmethod
+    def save_unchecked_description(session, data: Dict):
+        """미체크 항목 설명과 액션 플랜 저장"""
+        # 데이터 검증
+        validated_data = UncheckedSerializer.deserialize_unchecked_description_create(data)
+        
+        unchecked_description = UncheckedDescription(
+            content=validated_data["content"],
+            action_plan=validated_data.get("action_plan"),
+            training_course=validated_data.get("training_course"),
+            resolved=False,
+        )
+
+        session.add(unchecked_description)
+        return unchecked_description
+
+    @staticmethod
+    def resolve_unchecked_description(session, data: Dict):
+        """미체크 항목 해결"""
+        # 데이터 검증
+        validated_data = UncheckedSerializer.deserialize_unchecked_resolve(data)
+        
+        unchecked_item = (
+            session.query(UncheckedDescription)
+            .filter(UncheckedDescription.id == validated_data["unchecked_id"])
+            .first()
+        )
+
+        if not unchecked_item:
+            raise ValueError("미체크 항목을 찾을 수 없습니다.")
+
+        unchecked_item.resolved = True
+        return unchecked_item
+
+    @staticmethod
+    def add_unchecked_comment(session, data: Dict):
+        """미체크 항목에 댓글 추가"""
+        # 데이터 검증
+        validated_data = UncheckedSerializer.deserialize_unchecked_comment_create(data)
+        
+        unchecked_comment = UncheckedComment(
+            unchecked_id=validated_data["unchecked_id"],
+            comment=validated_data["comment"],
+        )
+
+        session.add(unchecked_comment)
+        return unchecked_comment
+
+    @staticmethod
+    def get_unchecked_comments(session, unchecked_id: int) -> List[Dict]:
+        """미체크 항목의 댓글 조회"""
+        comments_query = (
+            session.query(UncheckedComment)
+            .filter(UncheckedComment.unchecked_id == unchecked_id)
+            .order_by(UncheckedComment.created_at.asc())
+        )
+
+        comments = [
+            {
+                "id": comment.id,
+                "comment": comment.comment,
+                "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            for comment in comments_query.all()
+        ]
+        
+        return comments
 
 
 class TrainingSerializer:
@@ -719,24 +1235,78 @@ class TrainingSerializer:
         """교육 정보 수정 데이터 역직렬화"""
         return Serializer.deserialize(data, training_info_update_schema, partial=True)
 
+    @staticmethod
+    def get_training_courses(session) -> List[str]:
+        """훈련 과정 목록 조회 (현재 진행 중이거나 종료된 지 1주일 이내의 과정만)"""
+        # 현재 날짜 기준으로 종료된 지 1주일 이내이거나 아직 진행 중인 과정만 조회
+        one_week_ago = datetime.now().date() - timedelta(days=7)
+        courses_query = (
+            session.query(TrainingInfo)
+            .filter(TrainingInfo.end_date >= one_week_ago)
+            .order_by(TrainingInfo.start_date.desc())
+        )
 
-class UserLastCheckSerializer:
-    """사용자 마지막 확인 관련 직렬화 함수들"""
+        courses = courses_query.all()
+
+        # Serializer를 사용한 데이터 직렬화
+        serialized_courses = TrainingSerializer.serialize_training_infos(courses)
+        course_names = [course["training_course"] for course in serialized_courses]
+        
+        return course_names
 
     @staticmethod
-    def serialize_user_last_check(last_check) -> Dict:
-        """단일 사용자 마지막 확인 정보 직렬화"""
-        return Serializer.serialize(last_check, user_last_check_schema)
+    def save_training_info(session, data: Dict):
+        """훈련 과정 정보 저장"""
+        # 데이터 검증
+        validated_data = TrainingSerializer.deserialize_training_info_create(data)
+        
+        # 날짜 문자열을 Date 객체로 변환
+        start_date_obj = datetime.strptime(
+            validated_data["start_date"], "%Y-%m-%d"
+        ).date()
+        end_date_obj = datetime.strptime(
+            validated_data["end_date"], "%Y-%m-%d"
+        ).date()
+
+        training_info = TrainingInfo(
+            training_course=validated_data["training_course"],
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            dept=validated_data["dept"],
+            manager_name=validated_data["manager_name"],
+        )
+
+        session.add(training_info)
+        return training_info
 
     @staticmethod
-    def serialize_user_last_checks(last_checks: List) -> List[Dict]:
-        """여러 사용자 마지막 확인 정보 직렬화"""
-        return Serializer.serialize(last_checks, user_last_checks_schema, many=True)
+    def get_training_info(session) -> List[Dict]:
+        """훈련 과정 목록 조회"""
+        courses_query = session.query(TrainingInfo).order_by(
+            TrainingInfo.start_date.desc()
+        )
+        courses = courses_query.all()
 
-    @staticmethod
-    def deserialize_user_last_check_update(data: Dict) -> Dict:
-        """사용자 마지막 확인 정보 업데이트 데이터 역직렬화"""
-        return Serializer.deserialize(data, user_last_check_update_schema, partial=True)
+        courses_data = [
+            {
+                "training_course": course.training_course,
+                "start_date": (
+                    course.start_date.strftime("%Y-%m-%d")
+                    if course.start_date
+                    else None
+                ),
+                "end_date": (
+                    course.end_date.strftime("%Y-%m-%d") if course.end_date else None
+                ),
+                "dept": course.dept,
+            }
+            for course in courses
+        ]
+        
+        return courses_data
+
+
+
 
 
 class NotificationSerializer:
@@ -746,6 +1316,68 @@ class NotificationSerializer:
     def deserialize_notification_query(data: Dict) -> Dict:
         """알림 조회 데이터 역직렬화"""
         return Serializer.deserialize(data, notification_query_schema)
+
+    @staticmethod
+    def get_unread_count(session, data: Dict) -> Dict:
+        """사용자별 미확인 알림 개수 조회"""
+        # 데이터 검증
+        validated_data = NotificationSerializer.deserialize_notification_query(data)
+        
+        # 사용자의 마지막 확인 시간 조회
+        last_check = (
+            session.query(UserLastCheck)
+            .filter(UserLastCheck.username == validated_data["username"])
+            .first()
+        )
+
+        if not last_check:
+            # 첫 로그인인 경우 현재 시간으로 초기화
+            last_check = UserLastCheck(
+                username=validated_data["username"],
+                last_notice_check=datetime.now(),
+                last_issue_check=datetime.now(),
+                last_comment_check=datetime.now(),
+            )
+            session.add(last_check)
+            session.flush()  # 커밋하지 않고 flush만 실행
+            return {
+                "new_notices": 0,
+                "new_issues": 0,
+                "new_comments": 0,
+            }
+
+        # 새로운 항목 개수 조회
+        new_notices = (
+            session.query(Notice)
+            .filter(
+                Notice.date > last_check.last_notice_check,
+                Notice.is_deleted == False,
+            )
+            .count()
+        )
+
+        new_issues = (
+            session.query(Issue)
+            .filter(Issue.created_at > last_check.last_issue_check)
+            .count()
+        )
+
+        new_comments = (
+            session.query(IssueComment)
+            .filter(IssueComment.created_at > last_check.last_comment_check)
+            .count()
+        )
+
+        # 현재 시간으로 마지막 확인 시간 업데이트
+        last_check.last_notice_check = datetime.now()
+        last_check.last_issue_check = datetime.now()
+        last_check.last_comment_check = datetime.now()
+
+        return {
+            "new_notices": new_notices,
+            "new_issues": new_issues,
+            "new_comments": new_comments,
+        }
 
 
 # ============================================================================
