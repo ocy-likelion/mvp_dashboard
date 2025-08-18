@@ -3,8 +3,7 @@ import io
 import pandas as pd
 import logging
 from app.models.db import get_db_session
-from app.models.models import Attendance
-from datetime import datetime
+
 from app.serializers import (
     AttendanceSerializer,
     json_response,
@@ -39,13 +38,9 @@ def get_attendance():
         format_type = request.args.get("format", "json")  # 기본값 JSON
 
         session = get_db_session()
-        attendance_query = session.query(Attendance).order_by(Attendance.date.desc())
-        attendance_records = attendance_query.all()
-
-        # Serializer를 사용한 데이터 직렬화
-        serialized_records = AttendanceSerializer.serialize_attendances(
-            attendance_records
-        )
+        
+        # Serializer를 사용한 출퇴근 기록 조회
+        serialized_records = AttendanceSerializer.get_attendance(session)
 
         session.close()
 
@@ -59,26 +54,18 @@ def get_attendance():
 
         # Excel 파일 다운로드
         elif format_type == "excel":
-            # Excel 생성을 위한 데이터 변환
+            # Excel 생성을 위한 데이터 변환 (직렬화된 데이터 사용)
             records_data = [
                 (
-                    record.id,
-                    record.date.strftime("%Y-%m-%d") if record.date else None,
-                    record.instructor,
-                    record.training_course,
-                    (
-                        record.check_in_time.strftime("%H:%M")
-                        if record.check_in_time
-                        else None
-                    ),
-                    (
-                        record.check_out_time.strftime("%H:%M")
-                        if record.check_out_time
-                        else None
-                    ),
-                    record.daily_log,
+                    record["id"],
+                    record["date"],
+                    record["instructor"],
+                    record["training_course"],
+                    record["check_in_time"],
+                    record["check_out_time"],
+                    record["daily_log"],
                 )
-                for record in attendance_records
+                for record in serialized_records
             ]
 
             columns = [
@@ -168,44 +155,11 @@ def save_attendance():
         if not data:
             return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        # 스키마를 사용한 데이터 검증
-        validated_data = AttendanceSerializer.deserialize_attendance_create(data)
-
         session = get_db_session()
         try:
-            # 시간 문자열을 Time 객체로 변환
-            check_in_time = (
-                datetime.strptime(
-                    validated_data.get("check_in_time", ""), "%H:%M"
-                ).time()
-                if validated_data.get("check_in_time")
-                else None
-            )
-            check_out_time = (
-                datetime.strptime(
-                    validated_data.get("check_out_time", ""), "%H:%M"
-                ).time()
-                if validated_data.get("check_out_time")
-                else None
-            )
-
-            attendance = Attendance(
-                date=validated_data["date"],
-                instructor=validated_data.get("instructor"),
-                instructor_name=validated_data.get("instructor_name"),
-                training_course=validated_data.get("training_course"),
-                check_in_time=check_in_time,
-                check_out_time=check_out_time,
-                daily_log=validated_data.get("daily_log", False),
-            )
-
-            session.add(attendance)
+            # Serializer를 사용한 출퇴근 기록 저장 (검증 포함)
+            serialized_attendance = AttendanceSerializer.save_attendance(session, data)
             session.commit()
-
-            # 저장된 데이터 직렬화
-            serialized_attendance = AttendanceSerializer.serialize_attendance(
-                attendance
-            )
 
         except Exception as e:
             session.rollback()
