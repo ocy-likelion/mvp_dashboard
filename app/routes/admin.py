@@ -1,9 +1,8 @@
-from flask import Blueprint
+from flask import Blueprint, request
 import logging
 from app.models.db import get_db_session
-from app.models.models import TaskChecklist, TrainingInfo
-from datetime import datetime, timedelta
 from app.serializers import (
+    AdminSerializer,
     json_response,
     error_json_response,
 )
@@ -20,49 +19,32 @@ def get_task_status():
     tags:
       - Admin
     summary: "훈련 과정별 업무 체크 상태 및 부서 정보 조회"
+    parameters:
+      - name: date
+        in: query
+        description: 조회할 날짜 (YYYY-MM-DD 형식, 기본값은 당일)
+        required: false
+        type: string
     responses:
       200:
         description: 훈련 과정별 체크율 데이터를 반환
+      400:
+        description: 잘못된 날짜 형식
       500:
         description: 체크 상태 조회 실패
     """
     try:
         session = get_db_session()
+        
+        # 날짜 파라미터 검증
+        date_str = request.args.get('date')
+        try:
+            target_date = AdminSerializer.validate_date_filter(date_str)
+        except ValueError as e:
+            return error_json_response(str(e), status_code=400)
 
-        # 당일 날짜
-        today = datetime.now().date()
-
-        # 훈련 과정별 체크 상태 조회
-        task_status = []
-
-        # 모든 훈련 과정 조회
-        training_courses = session.query(TrainingInfo).all()
-
-        for course in training_courses:
-            # 당일 체크된 데이터만 필터링
-            daily_checklist = (
-                session.query(TaskChecklist)
-                .filter(
-                    TaskChecklist.training_course == course.training_course,
-                    TaskChecklist.checked_date >= today,
-                    TaskChecklist.checked_date < today + timedelta(days=1),
-                )
-                .all()
-            )
-
-            total_tasks = len(daily_checklist)
-            checked_tasks = sum(1 for task in daily_checklist if task.is_checked)
-            check_rate = (
-                round((checked_tasks / total_tasks) * 100, 2) if total_tasks > 0 else 0
-            )
-
-            task_status.append(
-                {
-                    "training_course": course.training_course,
-                    "dept": course.dept,
-                    "check_rate": f"{check_rate}%",
-                }
-            )
+        # Serializer를 통한 데이터 조회
+        task_status = AdminSerializer.get_daily_task_status(session, target_date)
 
         session.close()
 
@@ -90,32 +72,8 @@ def get_overall_task_status():
     try:
         session = get_db_session()
 
-        task_status = []
-
-        # 모든 훈련 과정 조회
-        training_courses = session.query(TrainingInfo).all()
-
-        for course in training_courses:
-            # 전체 체크리스트 데이터
-            all_checklist = (
-                session.query(TaskChecklist)
-                .filter(TaskChecklist.training_course == course.training_course)
-                .all()
-            )
-
-            total_tasks = len(all_checklist)
-            checked_tasks = sum(1 for task in all_checklist if task.is_checked)
-            check_rate = (
-                round((checked_tasks / total_tasks) * 100, 2) if total_tasks > 0 else 0
-            )
-
-            task_status.append(
-                {
-                    "training_course": course.training_course,
-                    "dept": course.dept,
-                    "check_rate": f"{check_rate}%",
-                }
-            )
+        # Serializer를 통한 데이터 조회
+        task_status = AdminSerializer.get_overall_task_status(session)
 
         session.close()
 
@@ -145,76 +103,8 @@ def get_combined_task_status():
     try:
         session = get_db_session()
 
-        # 종료된 지 1주일 이내의 과정만 포함
-        one_week_ago = datetime.now().date() - timedelta(days=7)
-        training_courses = (
-            session.query(TrainingInfo)
-            .filter(TrainingInfo.end_date >= one_week_ago)
-            .order_by(TrainingInfo.end_date.desc())
-            .all()
-        )
-
-        task_status = []
-        today = datetime.now().date()
-        yesterday = today - timedelta(days=1)
-
-        for course in training_courses:
-            # 전체 체크리스트 데이터
-            all_checklist = (
-                session.query(TaskChecklist)
-                .filter(TaskChecklist.training_course == course.training_course)
-                .all()
-            )
-
-            # 당일 체크리스트 데이터
-            daily_checklist = [
-                task
-                for task in all_checklist
-                if task.checked_date and task.checked_date.date() == today
-            ]
-
-            # 전날 체크리스트 데이터
-            yesterday_checklist = [
-                task
-                for task in all_checklist
-                if task.checked_date and task.checked_date.date() == yesterday
-            ]
-
-            # 체크율 계산
-            total_tasks = len(all_checklist)
-            checked_tasks = sum(1 for task in all_checklist if task.is_checked)
-            overall_check_rate = (
-                round((checked_tasks / total_tasks) * 100, 2) if total_tasks > 0 else 0
-            )
-
-            daily_total_tasks = len(daily_checklist)
-            daily_checked_tasks = sum(1 for task in daily_checklist if task.is_checked)
-            daily_check_rate = (
-                round((daily_checked_tasks / daily_total_tasks) * 100, 2)
-                if daily_total_tasks > 0
-                else 0
-            )
-
-            yesterday_total_tasks = len(yesterday_checklist)
-            yesterday_checked_tasks = sum(
-                1 for task in yesterday_checklist if task.is_checked
-            )
-            yesterday_check_rate = (
-                round((yesterday_checked_tasks / yesterday_total_tasks) * 100, 2)
-                if yesterday_total_tasks > 0
-                else 0
-            )
-
-            task_status.append(
-                {
-                    "training_course": course.training_course,
-                    "dept": course.dept,
-                    "manager_name": course.manager_name or "담당자 없음",
-                    "daily_check_rate": f"{daily_check_rate}%",
-                    "yesterday_check_rate": f"{yesterday_check_rate}%",
-                    "overall_check_rate": f"{overall_check_rate}%",
-                }
-            )
+        # Serializer를 통한 데이터 조회
+        task_status = AdminSerializer.get_combined_task_status(session)
 
         session.close()
 

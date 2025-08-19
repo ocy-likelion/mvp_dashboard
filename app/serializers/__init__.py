@@ -15,6 +15,7 @@ from .task import TaskSerializer
 from .unchecked import UncheckedSerializer
 from .training import TrainingSerializer
 from .notification import NotificationSerializer
+from .admin import AdminSerializer
 
 # Helper functions
 from .helpers import (
@@ -37,6 +38,7 @@ __all__ = [
     "UncheckedSerializer",
     "TrainingSerializer",
     "NotificationSerializer",
+    "AdminSerializer",
     # Helper functions
     "json_response",
     "error_json_response",
