@@ -178,32 +178,20 @@ def update_tasks():
             validated_data = TaskSerializer.deserialize_task_update(data)
             # Service를 사용한 체크리스트 업데이트
             result = TaskService.update_task_checklist(session, validated_data)
+            # Serializer를 사용한 응답 데이터 구성
+            response_data = TaskSerializer.serialize_task_update_result(result)
             session.commit()
 
-            updated_count = result["updated_count"]
-            not_found_items = result["not_found_items"]
-
+        except ValueError as e:
+            session.rollback()
+            # 비즈니스 규칙 위반 (404 에러)
+            return error_json_response(str(e), status_code=404)
         except Exception as e:
             session.rollback()
             logger.error(f"체크리스트 업데이트 중 오류: {str(e)}")
             return error_json_response("체크리스트 업데이트 실패", status_code=500)
         finally:
             session.close()
-
-        if updated_count == 0:
-            return error_json_response(
-                "당일 저장된 체크리스트가 없어 업데이트할 수 없습니다.", status_code=404
-            )
-
-        response_data = {
-            "updated_count": updated_count,
-        }
-
-        if not_found_items:
-            response_data["warning"] = (
-                "일부 항목은 당일 저장된 데이터가 없어 업데이트되지 않았습니다."
-            )
-            response_data["not_found_items"] = not_found_items
 
         return json_response(
             data=response_data,
