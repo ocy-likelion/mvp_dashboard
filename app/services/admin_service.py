@@ -25,7 +25,7 @@ class AdminService(BaseService):
         session: Session, target_date: datetime = None
     ) -> List[Dict]:
         """특정 날짜의 훈련 과정별 업무 체크 상태 조회"""
-        AdminService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         if target_date is None:
             target_date = datetime.now().date()
@@ -63,7 +63,7 @@ class AdminService(BaseService):
     @staticmethod
     def get_overall_task_status(session: Session) -> List[Dict]:
         """훈련 과정별 전체 체크율 조회"""
-        AdminService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         training_courses = session.query(TrainingInfo).all()
         task_status = []
@@ -93,7 +93,7 @@ class AdminService(BaseService):
     @staticmethod
     def get_combined_task_status(session: Session) -> List[Dict]:
         """훈련 과정별 통합 업무 체크율 조회 (당일, 전날, 전체)"""
-        AdminService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 종료된 지 1주일 이내의 과정만 포함
         one_week_ago = datetime.now().date() - timedelta(days=7)
@@ -180,7 +180,7 @@ class AdminService(BaseService):
     @staticmethod
     def get_training_courses_summary(session: Session) -> List[Dict]:
         """훈련 과정 요약 정보 조회"""
-        AdminService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 종료된 지 1주일 이내의 과정만 포함
         one_week_ago = datetime.now().date() - timedelta(days=7)

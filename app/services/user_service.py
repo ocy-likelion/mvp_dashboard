@@ -90,7 +90,7 @@ class UserService(BaseService):
     @staticmethod
     def login(session: Session, validated_data: Dict) -> Dict:
         """로그인 처리"""
-        UserService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         username = validated_data["username"]
         password = validated_data["password"]
@@ -110,7 +110,7 @@ class UserService(BaseService):
     @staticmethod
     def change_password(session: Session, validated_data: Dict) -> User:
         """비밀번호 변경"""
-        UserService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         username = validated_data["username"]
         current_password = validated_data["current_password"]
@@ -140,7 +140,7 @@ class UserService(BaseService):
     @staticmethod
     def create_user(session: Session, user_data: Dict) -> User:
         """사용자 생성"""
-        UserService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 사용자명 중복 확인
         existing_user = (
@@ -171,7 +171,7 @@ class UserService(BaseService):
     @staticmethod
     def get_user_by_username(session: Session, username: str) -> User:
         """사용자명으로 사용자 조회"""
-        UserService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         user = session.query(User).filter(User.username == username).first()
         if not user:

@@ -21,7 +21,7 @@ class UncheckedService(BaseService):
     @staticmethod
     def get_irregular_tasks(session: Session) -> List[Dict]:
         """비정기 업무 목록 조회"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 가장 최근 상태만 조회 (resolved=False인 항목들)
         tasks_query = (
@@ -49,7 +49,7 @@ class UncheckedService(BaseService):
         session: Session, task_name: str, training_course: str, is_checked: bool
     ) -> UncheckedDescription:
         """비정기 업무 생성"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         irregular_task = UncheckedDescription(
             content=task_name,
@@ -63,7 +63,7 @@ class UncheckedService(BaseService):
     @staticmethod
     def save_irregular_tasks(session: Session, validated_data: Dict) -> None:
         """비정기 업무 저장"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         training_course = validated_data["training_course"]
         updates = validated_data["updates"]
@@ -82,7 +82,7 @@ class UncheckedService(BaseService):
         session: Session, include_resolved: bool = False
     ) -> List[Dict]:
         """미체크 항목 설명 및 액션 플랜 조회 (부서명 포함)"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         query = session.query(UncheckedDescription)
         if not include_resolved:
@@ -139,7 +139,7 @@ class UncheckedService(BaseService):
         session: Session, description_data: Dict
     ) -> UncheckedDescription:
         """미체크 항목 설명과 액션 플랜 저장"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         unchecked_description = UncheckedDescription(
             content=description_data["content"],
@@ -156,7 +156,7 @@ class UncheckedService(BaseService):
         session: Session, validated_data: Dict
     ) -> UncheckedDescription:
         """미체크 항목 해결"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         unchecked_id = validated_data["unchecked_id"]
 
@@ -176,7 +176,7 @@ class UncheckedService(BaseService):
     @staticmethod
     def add_unchecked_comment(session: Session, comment_data: Dict) -> UncheckedComment:
         """미체크 항목에 댓글 추가"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 미체크 항목 존재 확인
         UncheckedService.safe_get_by_id(
@@ -197,7 +197,7 @@ class UncheckedService(BaseService):
     @staticmethod
     def get_unchecked_comments(session: Session, unchecked_id: int) -> List[Dict]:
         """미체크 항목의 댓글 조회"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 미체크 항목 존재 확인
         UncheckedService.safe_get_by_id(
@@ -242,7 +242,7 @@ class UncheckedService(BaseService):
         session: Session, training_course: str, include_resolved: bool = False
     ) -> List[UncheckedDescription]:
         """교육과정별 미체크 항목 조회"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         query = session.query(UncheckedDescription).filter(
             UncheckedDescription.training_course == training_course
@@ -284,7 +284,7 @@ class UncheckedService(BaseService):
     @staticmethod
     def get_overdue_items(session: Session) -> List[Dict]:
         """마감일이 지난 미체크 항목들 조회"""
-        UncheckedService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         today = datetime.now().date()
         items = (

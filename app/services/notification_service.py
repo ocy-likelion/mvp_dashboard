@@ -16,7 +16,7 @@ class NotificationService(BaseService):
     @staticmethod
     def get_unread_count(session: Session, validated_data: Dict) -> Dict:
         """사용자별 미확인 알림 개수 조회"""
-        NotificationService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         username = validated_data["username"]
 
@@ -74,7 +74,7 @@ class NotificationService(BaseService):
     @staticmethod
     def update_last_check_time(session: Session, validated_data: Dict) -> UserLastCheck:
         """사용자의 마지막 확인 시간 업데이트"""
-        NotificationService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         username = validated_data["username"]
         check_type = validated_data.get("check_type", "all")

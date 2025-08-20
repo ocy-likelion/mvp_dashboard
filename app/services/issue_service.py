@@ -15,7 +15,7 @@ class IssueService(BaseService):
     @staticmethod
     def create_issue(session: Session, issue_data: Dict) -> Issue:
         """이슈 생성"""
-        IssueService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 이슈 생성
         issue = Issue(
@@ -33,7 +33,7 @@ class IssueService(BaseService):
     @staticmethod
     def get_unresolved_issues(session: Session) -> List[Dict]:
         """해결되지 않은 이슈 목록 조회 (교육과정별 그룹화)"""
-        IssueService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 해결되지 않은 이슈 조회
         issues = (
@@ -90,14 +90,14 @@ class IssueService(BaseService):
     @staticmethod
     def get_all_issues(session: Session) -> List[Issue]:
         """모든 이슈 목록 조회 (다운로드용)"""
-        IssueService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         return session.query(Issue).order_by(Issue.created_at.desc()).all()
 
     @staticmethod
     def add_comment(session: Session, comment_data: Dict) -> IssueComment:
         """이슈 댓글 추가"""
-        IssueService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 이슈 존재 확인
         issue = IssueService.safe_get_by_id(
@@ -117,7 +117,7 @@ class IssueService(BaseService):
     @staticmethod
     def resolve_issue(session: Session, validated_data: Dict) -> Issue:
         """이슈 해결"""
-        IssueService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         issue_id = validated_data["issue_id"]
 
@@ -134,7 +134,7 @@ class IssueService(BaseService):
     @staticmethod
     def get_issue_comments(session: Session, issue_id: int) -> List[IssueComment]:
         """특정 이슈에 대한 댓글 목록 조회"""
-        IssueService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 이슈 존재 확인
         IssueService.safe_get_by_id(
@@ -163,7 +163,7 @@ class IssueService(BaseService):
         session: Session, training_course: str, include_resolved: bool = False
     ) -> List[Issue]:
         """교육과정별 이슈 조회"""
-        IssueService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         query = session.query(Issue).filter(Issue.training_course == training_course)
 

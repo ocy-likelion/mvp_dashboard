@@ -18,7 +18,7 @@ class NoticeService(BaseService):
     @staticmethod
     def create_notice(session: Session, notice_data: Dict) -> Notice:
         """공지사항 추가"""
-        NoticeService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 허용된 사용자 확인
         created_by = notice_data.get("created_by")
@@ -39,7 +39,7 @@ class NoticeService(BaseService):
     @staticmethod
     def get_notices(session: Session, include_deleted: bool = False) -> List[Dict]:
         """공지사항 조회"""
-        NoticeService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 기본적으로 삭제되지 않은 공지사항만 조회
         query = session.query(Notice)
@@ -67,7 +67,7 @@ class NoticeService(BaseService):
     @staticmethod
     def update_notice(session: Session, notice_id: int, validated_data: Dict) -> Notice:
         """공지사항 수정"""
-        NoticeService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         username = validated_data["username"]
 
@@ -95,7 +95,7 @@ class NoticeService(BaseService):
     @staticmethod
     def delete_notice(session: Session, notice_id: int) -> Notice:
         """공지사항 삭제 (soft delete)"""
-        NoticeService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 공지사항 존재 확인
         notice = NoticeService.safe_get_by_id(
@@ -114,7 +114,7 @@ class NoticeService(BaseService):
     @staticmethod
     def mark_notice_read(session: Session, validated_data: Dict) -> NoticeRead:
         """공지사항 읽음 표시"""
-        NoticeService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         notice_id = validated_data["notice_id"]
         username = validated_data["username"]
@@ -153,7 +153,7 @@ class NoticeService(BaseService):
     @staticmethod
     def get_notice_reads(session: Session, notice_id: int) -> List[Dict]:
         """공지사항별 읽은 사용자 목록 조회"""
-        NoticeService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 공지사항 존재 확인
         NoticeService.safe_get_by_id(
@@ -197,7 +197,7 @@ class NoticeService(BaseService):
     @staticmethod
     def get_unread_notices_for_user(session: Session, username: str) -> List[Notice]:
         """사용자가 읽지 않은 공지사항 목록 조회"""
-        NoticeService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 사용자가 읽은 공지사항 ID 목록
         read_notice_ids = (

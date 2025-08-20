@@ -18,7 +18,7 @@ class AttendanceService(BaseService):
     @staticmethod
     def create_attendance(session: Session, attendance_data: Dict) -> Attendance:
         """출퇴근 기록 저장"""
-        AttendanceService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 시간 문자열을 Time 객체로 변환
         check_in_time = None
@@ -123,7 +123,7 @@ class AttendanceService(BaseService):
     @staticmethod
     def get_attendance_records(session: Session, limit: int = None) -> List[Attendance]:
         """출퇴근 기록 조회"""
-        AttendanceService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         query = session.query(Attendance).order_by(Attendance.date.desc())
 
@@ -137,7 +137,7 @@ class AttendanceService(BaseService):
         session: Session, start_date: datetime, end_date: datetime
     ) -> List[Attendance]:
         """기간별 출석 기록 조회"""
-        AttendanceService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         return (
             session.query(Attendance)
@@ -151,7 +151,7 @@ class AttendanceService(BaseService):
         session: Session, training_course: str
     ) -> List[Attendance]:
         """교육과정별 출석 기록 조회"""
-        AttendanceService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         return (
             session.query(Attendance)
@@ -165,7 +165,7 @@ class AttendanceService(BaseService):
         session: Session, instructor: str
     ) -> List[Attendance]:
         """강사별 출석 기록 조회"""
-        AttendanceService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         return (
             session.query(Attendance)
@@ -251,7 +251,7 @@ class AttendanceService(BaseService):
     @staticmethod
     def get_attendance_summary(session: Session, training_course: str = None) -> Dict:
         """출석 요약 정보 조회"""
-        AttendanceService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         query = session.query(Attendance)
         if training_course:
@@ -294,7 +294,7 @@ class AttendanceService(BaseService):
         session: Session, training_course: str = None
     ) -> Attendance:
         """최근 출석 기록 조회"""
-        AttendanceService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         query = session.query(Attendance)
         if training_course:

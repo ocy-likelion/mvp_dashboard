@@ -16,7 +16,7 @@ class TaskService(BaseService):
     @staticmethod
     def save_task_checklist(session: Session, validated_data: Dict) -> None:
         """체크리스트 저장/업데이트"""
-        TaskService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         training_course = validated_data["training_course"]
         username = validated_data["username"]
@@ -66,7 +66,7 @@ class TaskService(BaseService):
     @staticmethod
     def update_task_checklist(session: Session, validated_data: Dict) -> Dict:
         """체크리스트 업데이트 (당일 데이터만)"""
-        TaskService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         training_course = validated_data["training_course"]
         updates = validated_data["updates"]
@@ -119,7 +119,7 @@ class TaskService(BaseService):
     @staticmethod
     def get_tasks(session: Session, task_category: str = None) -> List[TaskItem]:
         """업무 체크리스트 조회"""
-        TaskService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # ORM을 사용하여 업무 조회
         tasks_query = session.query(TaskItem).order_by(TaskItem.id.asc())
@@ -132,7 +132,7 @@ class TaskService(BaseService):
     @staticmethod
     def get_task_by_name(session: Session, task_name: str) -> TaskItem:
         """작업명으로 작업 조회"""
-        TaskService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         task = session.query(TaskItem).filter(TaskItem.task_name == task_name).first()
         if not task:
@@ -143,7 +143,7 @@ class TaskService(BaseService):
     @staticmethod
     def create_task_item(session: Session, task_data: Dict) -> TaskItem:
         """새 작업 항목 생성"""
-        TaskService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 중복 체크
         existing_task = (
@@ -169,7 +169,7 @@ class TaskService(BaseService):
         session: Session, training_course: str, date: datetime = None
     ) -> List[Dict]:
         """특정 과정의 체크리스트 상태 조회"""
-        TaskService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         if date is None:
             date = datetime.now().date()
@@ -211,7 +211,7 @@ class TaskService(BaseService):
         session: Session, training_course: str, date: datetime = None
     ) -> List[Dict]:
         """미체크 작업 목록 조회"""
-        TaskService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         if date is None:
             date = datetime.now().date()

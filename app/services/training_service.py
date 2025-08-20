@@ -16,7 +16,7 @@ class TrainingService(BaseService):
     @staticmethod
     def get_active_training_courses(session: Session) -> List[str]:
         """현재 진행 중이거나 종료된 지 1주일 이내의 훈련 과정 목록 조회"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 현재 날짜 기준으로 종료된 지 1주일 이내이거나 아직 진행 중인 과정만 조회
         one_week_ago = datetime.now().date() - timedelta(days=7)
@@ -34,7 +34,7 @@ class TrainingService(BaseService):
     @staticmethod
     def create_training_info(session: Session, training_data: Dict) -> TrainingInfo:
         """훈련 과정 정보 저장"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         # 중복 과정명 확인
         existing_course = (
@@ -87,7 +87,7 @@ class TrainingService(BaseService):
     @staticmethod
     def get_all_training_info(session: Session) -> List[Dict]:
         """모든 훈련 과정 목록 조회"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         courses_query = session.query(TrainingInfo).order_by(
             TrainingInfo.start_date.desc()
@@ -120,7 +120,7 @@ class TrainingService(BaseService):
     @staticmethod
     def get_training_by_course_name(session: Session, course_name: str) -> TrainingInfo:
         """과정명으로 훈련 정보 조회"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         training = (
             session.query(TrainingInfo)
@@ -202,7 +202,7 @@ class TrainingService(BaseService):
     @staticmethod
     def get_training_by_dept(session: Session, dept: str) -> List[TrainingInfo]:
         """부서별 훈련 과정 조회"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         return (
             session.query(TrainingInfo)
@@ -216,7 +216,7 @@ class TrainingService(BaseService):
         session: Session, manager_name: str
     ) -> List[TrainingInfo]:
         """담당자별 훈련 과정 조회"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         return (
             session.query(TrainingInfo)
@@ -228,7 +228,7 @@ class TrainingService(BaseService):
     @staticmethod
     def get_current_training_courses(session: Session) -> List[TrainingInfo]:
         """현재 진행 중인 훈련 과정 조회"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         today = datetime.now().date()
         return (
@@ -243,7 +243,7 @@ class TrainingService(BaseService):
         session: Session, days_ahead: int = 30
     ) -> List[TrainingInfo]:
         """앞으로 시작될 훈련 과정 조회"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         today = datetime.now().date()
         future_date = today + timedelta(days=days_ahead)
@@ -262,7 +262,7 @@ class TrainingService(BaseService):
         session: Session, days_back: int = 30
     ) -> List[TrainingInfo]:
         """최근 완료된 훈련 과정 조회"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         today = datetime.now().date()
         past_date = today - timedelta(days=days_back)
@@ -286,7 +286,7 @@ class TrainingService(BaseService):
     @staticmethod
     def get_training_summary(session: Session) -> Dict:
         """훈련 과정 요약 정보"""
-        TrainingService.validate_session(session)
+        BaseService.validate_db_session(session)
 
         today = datetime.now().date()
 
