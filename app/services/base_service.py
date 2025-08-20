@@ -11,9 +11,11 @@ class BaseService:
 
     @staticmethod
     def validate_session(session: Session) -> None:
-        """Validate that session is not None"""
-        if session is None:
-            raise ValueError("Database session is required")
+        """Validate that session is active and not closed"""
+        if not session.is_active:
+            raise ValueError("Database session is not active")
+        if session.bind is None:
+            raise ValueError("Database session has no bind")
 
     @staticmethod
     def safe_get_by_id(
