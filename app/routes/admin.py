@@ -2,10 +2,10 @@ from flask import Blueprint, request
 import logging
 from app.models.db import get_db_session
 from app.serializers import (
-    AdminSerializer,
     json_response,
     error_json_response,
 )
+from app.services import AdminService
 
 admin_bp = Blueprint("admin", __name__)
 logger = logging.getLogger(__name__)
@@ -35,16 +35,16 @@ def get_task_status():
     """
     try:
         session = get_db_session()
-        
+
         # 날짜 파라미터 검증
-        date_str = request.args.get('date')
+        date_str = request.args.get("date")
         try:
-            target_date = AdminSerializer.validate_date_filter(date_str)
+            target_date = AdminService.validate_date_filter(date_str)
         except ValueError as e:
             return error_json_response(str(e), status_code=400)
 
-        # Serializer를 통한 데이터 조회
-        task_status = AdminSerializer.get_daily_task_status(session, target_date)
+        # Service를 통한 데이터 조회
+        task_status = AdminService.get_daily_task_status(session, target_date)
 
         session.close()
 
@@ -72,8 +72,8 @@ def get_overall_task_status():
     try:
         session = get_db_session()
 
-        # Serializer를 통한 데이터 조회
-        task_status = AdminSerializer.get_overall_task_status(session)
+        # Service를 통한 데이터 조회
+        task_status = AdminService.get_overall_task_status(session)
 
         session.close()
 
@@ -103,8 +103,8 @@ def get_combined_task_status():
     try:
         session = get_db_session()
 
-        # Serializer를 통한 데이터 조회
-        task_status = AdminSerializer.get_combined_task_status(session)
+        # Service를 통한 데이터 조회
+        task_status = AdminService.get_combined_task_status(session)
 
         session.close()
 

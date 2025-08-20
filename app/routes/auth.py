@@ -9,6 +9,7 @@ from app.serializers import (
     error_json_response,
     handle_serialization_errors,
 )
+from app.services import UserService
 
 auth_bp = Blueprint("auth", __name__)
 logger = logging.getLogger(__name__)
@@ -53,8 +54,10 @@ def login():
     try:
         session_db = get_db_session()
         try:
-            # Serializer를 사용한 로그인 처리 (검증 포함)
-            user_data = UserSerializer.login(session_db, data)
+            # 데이터 검증
+            validated_data = UserSerializer.deserialize_user_login(data)
+            # Service를 사용한 로그인 처리
+            user_data = UserService.login(session_db, validated_data)
 
         finally:
             session_db.close()
@@ -147,11 +150,13 @@ def change_password():
         if not data:
             return error_json_response("요청 데이터가 없습니다.", status_code=400)
 
-        session_db = get_db_session()
+        session = get_db_session()
         try:
-            # Serializer를 사용한 비밀번호 변경 (검증 포함)
-            UserSerializer.change_password(session_db, data)
-            session_db.commit()
+            # 데이터 검증
+            validated_data = UserSerializer.deserialize_password_change(data)
+            # Service를 사용한 비밀번호 변경
+            UserService.change_password(session, validated_data)
+            session.commit()
 
             return json_response(
                 data=None,
@@ -160,7 +165,7 @@ def change_password():
             )
 
         finally:
-            session_db.close()
+            session.close()
 
     except Exception as e:
         logger.error("비밀번호 변경 오류", exc_info=True)

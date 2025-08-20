@@ -9,6 +9,7 @@ from app.serializers import (
     error_json_response,
     handle_serialization_errors,
 )
+from app.services import TrainingService, UncheckedService
 
 training_bp = Blueprint("training", __name__)
 logger = logging.getLogger(__name__)
@@ -31,8 +32,8 @@ def get_training_courses():
     try:
         session = get_db_session()
 
-        # Serializer를 사용한 훈련 과정 목록 조회
-        course_names = TrainingSerializer.get_training_courses(session)
+        # Service를 사용한 훈련 과정 목록 조회
+        course_names = TrainingService.get_active_training_courses(session)
 
         session.close()
 
@@ -101,8 +102,10 @@ def save_training_info():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 훈련 과정 정보 저장 (검증 포함)
-            TrainingSerializer.save_training_info(session, data)
+            # 데이터 검증
+            validated_data = TrainingSerializer.deserialize_training_info_create(data)
+            # Service를 사용한 훈련 과정 정보 저장
+            TrainingService.create_training_info(session, validated_data)
             session.commit()
 
         except Exception as e:
@@ -136,8 +139,8 @@ def get_training_info():
     try:
         session = get_db_session()
 
-        # Serializer를 사용한 훈련 과정 목록 조회
-        courses_data = TrainingSerializer.get_training_info(session)
+        # Service를 사용한 훈련 과정 목록 조회
+        courses_data = TrainingService.get_all_training_info(session)
 
         session.close()
 
@@ -166,8 +169,8 @@ def get_unchecked_descriptions():
     try:
         session = get_db_session()
 
-        # Serializer를 사용한 미체크 항목 목록 조회
-        unchecked_items = UncheckedSerializer.get_unchecked_descriptions(session)
+        # Service를 사용한 미체크 항목 목록 조회
+        unchecked_items = UncheckedService.get_unchecked_descriptions(session)
 
         session.close()
 
@@ -220,8 +223,12 @@ def save_unchecked_description():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 미체크 항목 저장 (검증 포함)
-            UncheckedSerializer.save_unchecked_description(session, data)
+            # 데이터 검증
+            validated_data = (
+                UncheckedSerializer.deserialize_unchecked_description_create(data)
+            )
+            # Service를 사용한 미체크 항목 저장
+            UncheckedService.create_unchecked_description(session, validated_data)
             session.commit()
 
         except Exception as e:
@@ -279,8 +286,12 @@ def add_unchecked_comment():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 댓글 추가 (검증 포함)
-            UncheckedSerializer.add_unchecked_comment(session, data)
+            # 데이터 검증
+            validated_data = UncheckedSerializer.deserialize_unchecked_comment_create(
+                data
+            )
+            # Service를 사용한 댓글 추가
+            UncheckedService.add_unchecked_comment(session, validated_data)
             session.commit()
 
         except Exception as e:
@@ -332,8 +343,10 @@ def resolve_unchecked_description():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 미체크 항목 해결 (검증 포함)
-            UncheckedSerializer.resolve_unchecked_description(session, data)
+            # 데이터 검증
+            validated_data = UncheckedSerializer.deserialize_unchecked_resolve(data)
+            # Service를 사용한 미체크 항목 해결
+            UncheckedService.resolve_unchecked_description(session, validated_data)
             session.commit()
 
         except Exception as e:
@@ -380,8 +393,8 @@ def get_unchecked_comments():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 댓글 조회
-            comments = UncheckedSerializer.get_unchecked_comments(
+            # Service를 사용한 댓글 조회
+            comments = UncheckedService.get_unchecked_comments(
                 session, int(unchecked_id)
             )
 

@@ -1,6 +1,4 @@
 from flask import Blueprint, request, send_file
-import io
-import pandas as pd
 import logging
 from app.models.db import get_db_session
 
@@ -10,6 +8,7 @@ from app.serializers import (
     error_json_response,
     handle_serialization_errors,
 )
+from app.services import AttendanceService
 
 attendance_bp = Blueprint("attendance", __name__)
 logger = logging.getLogger(__name__)
@@ -39,8 +38,12 @@ def get_attendance():
 
         session = get_db_session()
 
-        # Serializer를 사용한 출퇴근 기록 조회
-        serialized_records = AttendanceSerializer.get_attendance(session)
+        # Service를 사용한 출퇴근 기록 조회
+        attendance_records = AttendanceService.get_attendance_records(session)
+        # Serializer로 데이터 직렬화
+        serialized_records = AttendanceSerializer.serialize_attendances(
+            attendance_records
+        )
 
         session.close()
 
@@ -54,37 +57,10 @@ def get_attendance():
 
         # Excel 파일 다운로드
         elif format_type == "excel":
-            # Excel 생성을 위한 데이터 변환 (직렬화된 데이터 사용)
-            records_data = [
-                (
-                    record["id"],
-                    record["date"],
-                    record["instructor"],
-                    record["training_course"],
-                    record["check_in_time"],
-                    record["check_out_time"],
-                    record["daily_log"],
-                )
-                for record in serialized_records
-            ]
-
-            columns = [
-                "ID",
-                "날짜",
-                "강사",
-                "훈련과정",
-                "출근 시간",
-                "퇴근 시간",
-                "일지 작성 완료",
-            ]
-            df = pd.DataFrame(records_data, columns=columns)
-
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                df.to_excel(writer, index=False, sheet_name="출퇴근 기록")
-            output.seek(0)
+            # Service를 사용한 Excel 파일 생성
+            excel_file = AttendanceService.generate_excel_file(serialized_records)
             return send_file(
-                output,
+                excel_file,
                 mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 as_attachment=True,
                 download_name="출퇴근_기록.xlsx",
@@ -157,8 +133,13 @@ def save_attendance():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 출퇴근 기록 저장 (검증 포함)
-            serialized_attendance = AttendanceSerializer.save_attendance(session, data)
+            # 데이터 검증
+            validated_data = AttendanceSerializer.deserialize_attendance_create(data)
+            # Service를 사용한 출퇴근 기록 저장
+            attendance = AttendanceService.create_attendance(session, validated_data)
+            serialized_attendance = AttendanceSerializer.serialize_attendance(
+                attendance
+            )
             session.commit()
 
         except Exception as e:

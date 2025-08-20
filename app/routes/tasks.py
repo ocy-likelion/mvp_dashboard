@@ -8,6 +8,7 @@ from app.serializers import (
     error_json_response,
     handle_serialization_errors,
 )
+from app.services import TaskService, UncheckedService
 
 tasks_bp = Blueprint("tasks", __name__)
 logger = logging.getLogger(__name__)
@@ -38,8 +39,10 @@ def get_tasks():
 
         session = get_db_session()
 
-        # Serializer를 사용한 업무 체크리스트 조회
-        serialized_tasks = TaskSerializer.get_tasks(session, task_category)
+        # Service를 사용한 업무 체크리스트 조회
+        tasks = TaskService.get_tasks(session, task_category)
+        # Serializer로 데이터 직렬화
+        serialized_tasks = TaskSerializer.serialize_task_items(tasks)
 
         session.close()
 
@@ -98,8 +101,10 @@ def save_tasks():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 체크리스트 저장/업데이트 (검증 포함)
-            TaskSerializer.save_task_checklist(session, data)
+            # 데이터 검증
+            validated_data = TaskSerializer.deserialize_task_update(data)
+            # Service를 사용한 체크리스트 저장/업데이트
+            TaskService.save_task_checklist(session, validated_data)
             session.commit()
 
         except Exception as e:
@@ -169,8 +174,10 @@ def update_tasks():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 체크리스트 업데이트 (검증 포함)
-            result = TaskSerializer.update_task_checklist(session, data)
+            # 데이터 검증
+            validated_data = TaskSerializer.deserialize_task_update(data)
+            # Service를 사용한 체크리스트 업데이트
+            result = TaskService.update_task_checklist(session, validated_data)
             session.commit()
 
             updated_count = result["updated_count"]
@@ -226,8 +233,8 @@ def get_irregular_tasks():
     try:
         session = get_db_session()
 
-        # Serializer를 사용한 비정기 업무 조회
-        tasks = UncheckedSerializer.get_irregular_tasks(session)
+        # Service를 사용한 비정기 업무 조회
+        tasks = UncheckedService.get_irregular_tasks(session)
 
         session.close()
 
@@ -282,8 +289,10 @@ def save_irregular_tasks():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 비정기 업무 저장 (검증 포함)
-            UncheckedSerializer.save_irregular_tasks(session, data)
+            # 데이터 검증
+            validated_data = UncheckedSerializer.deserialize_irregular_task_create(data)
+            # Service를 사용한 비정기 업무 저장
+            UncheckedService.save_irregular_tasks(session, validated_data)
             session.commit()
 
         except Exception as e:

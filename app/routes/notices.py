@@ -1,7 +1,6 @@
 from flask import Blueprint, request
 import logging
 from app.models.db import get_db_session
-from app.models.models import NoticeRead
 from app.utils.notifications import SlackNotifier
 from app.serializers import (
     NoticeSerializer,
@@ -9,6 +8,7 @@ from app.serializers import (
     error_json_response,
     handle_serialization_errors,
 )
+from app.services import NoticeService
 
 notices_bp = Blueprint("notices", __name__)
 logger = logging.getLogger(__name__)
@@ -64,8 +64,11 @@ def add_notice():
         # DB 작업 - Serializer 사용
         session = get_db_session()
         try:
-            # Serializer를 사용한 공지사항 추가 (검증 포함)
-            notice_data = NoticeSerializer.add_notice(session, data)
+            # 데이터 검증
+            validated_data = NoticeSerializer.deserialize_notice_create(data)
+            # Service를 사용한 공지사항 추가
+            notice = NoticeService.create_notice(session, validated_data)
+            notice_data = NoticeSerializer.serialize_notice(notice)
             session.commit()
 
         except Exception as e:
@@ -104,8 +107,8 @@ def get_notices():
     try:
         session = get_db_session()
 
-        # Serializer를 사용한 공지사항 조회
-        notices = NoticeSerializer.get_notices(session)
+        # Service를 사용한 공지사항 조회
+        notices = NoticeService.get_notices(session)
 
         session.close()
         return json_response({"data": notices}), 200
@@ -166,8 +169,11 @@ def update_notice(notice_id):
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 공지사항 수정 (검증 포함)
-            serialized_notice = NoticeSerializer.update_notice(session, notice_id, data)
+            # 데이터 검증
+            validated_data = NoticeSerializer.deserialize_notice_update(data)
+            # Service를 사용한 공지사항 수정
+            notice = NoticeService.update_notice(session, notice_id, validated_data)
+            serialized_notice = NoticeSerializer.serialize_notice(notice)
             session.commit()
 
         except Exception as e:
@@ -216,8 +222,9 @@ def delete_notice(notice_id):
     try:
         session = get_db_session()
         try:
-            # Serializer를 사용한 공지사항 삭제
-            serialized_notice = NoticeSerializer.delete_notice(session, notice_id)
+            # Service를 사용한 공지사항 삭제
+            notice = NoticeService.delete_notice(session, notice_id)
+            serialized_notice = NoticeSerializer.serialize_notice(notice)
             session.commit()
 
         except Exception as e:
@@ -280,8 +287,11 @@ def mark_notice_read():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 공지사항 읽음 표시 (검증 포함)
-            serialized_notice_read = NoticeSerializer.mark_notice_read(session, data)
+            # 데이터 검증
+            validated_data = NoticeSerializer.deserialize_notice_read_create(data)
+            # Service를 사용한 공지사항 읽음 표시
+            notice_read = NoticeService.mark_notice_read(session, validated_data)
+            serialized_notice_read = NoticeSerializer.serialize_notice_read(notice_read)
             session.commit()
 
         except Exception as e:
@@ -324,8 +334,8 @@ def get_notice_reads():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 공지사항 읽음 목록 조회 (검증 포함)
-            reads_data = NoticeSerializer.get_notice_reads(session, notice_id)
+            # Service를 사용한 공지사항 읽음 목록 조회
+            reads_data = NoticeService.get_notice_reads(session, int(notice_id))
 
             session.close()
             return json_response({"data": reads_data}), 200

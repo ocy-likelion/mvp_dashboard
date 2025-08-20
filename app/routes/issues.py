@@ -11,6 +11,7 @@ from app.serializers import (
     error_json_response,
     handle_serialization_errors,
 )
+from app.services import IssueService
 
 issues_bp = Blueprint("issues", __name__)
 
@@ -66,8 +67,11 @@ def create_issue():
         # 3. 데이터베이스 저장 - Serializer 사용
         session = get_db_session()
         try:
-            # Serializer를 사용한 이슈 생성 (검증 포함)
-            issue_data = IssueSerializer.create_issue(session, data)
+            # 데이터 검증
+            validated_data = IssueSerializer.deserialize_issue_create(data)
+            # Service를 사용한 이슈 생성
+            issue = IssueService.create_issue(session, validated_data)
+            issue_data = IssueSerializer.serialize_issue(issue)
             session.commit()
 
         except Exception as e:
@@ -121,8 +125,8 @@ def get_issues():
     try:
         session = get_db_session()
 
-        # Serializer를 사용한 이슈 목록 조회
-        response_data = IssueSerializer.get_issues(session)
+        # Service를 사용한 이슈 목록 조회
+        response_data = IssueService.get_unresolved_issues(session)
 
         session.close()
 
@@ -181,12 +185,14 @@ def add_comment():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 댓글 추가 (검증 포함)
-            comment_data = IssueSerializer.add_comment(session, data)
+            # 데이터 검증
+            validated_data = IssueSerializer.deserialize_issue_comment_create(data)
+            # Service를 사용한 댓글 추가
+            comment = IssueService.add_comment(session, validated_data)
             session.commit()
 
             # 저장된 댓글 직렬화
-            serialized_comment = IssueSerializer.serialize_issue_comment(comment_data)
+            serialized_comment = IssueSerializer.serialize_issue_comment(comment)
 
         except Exception as e:
             session.rollback()
@@ -197,9 +203,7 @@ def add_comment():
 
         # 댓글 등록 알림
         notifier = SlackNotifier()
-        notification_message = (
-            f"이슈에 새로운 댓글이 등록되었습니다!\n댓글: {comment_data['comment']}"
-        )
+        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n댓글: {serialized_comment['comment']}"
         notifier.send_notification(notification_message, channel_type="comment")
 
         return json_response(
@@ -236,8 +240,10 @@ def get_issue_comments():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 이슈 댓글 조회 (검증 포함)
-            serialized_comments = IssueSerializer.get_issue_comments(session, issue_id)
+            # Service를 사용한 이슈 댓글 조회
+            comments = IssueService.get_issue_comments(session, int(issue_id))
+            # 댓글 직렬화
+            serialized_comments = IssueSerializer.serialize_issue_comments(comments)
 
             return json_response(
                 data=serialized_comments, message="댓글 조회 성공", status_code=200
@@ -286,8 +292,11 @@ def resolve_issue():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 이슈 해결 (검증 포함)
-            serialized_issue = IssueSerializer.resolve_issue(session, data)
+            # 데이터 검증
+            validated_data = IssueSerializer.deserialize_issue_resolve(data)
+            # Service를 사용한 이슈 해결
+            issue = IssueService.resolve_issue(session, validated_data)
+            serialized_issue = IssueSerializer.serialize_issue(issue)
             session.commit()
 
         except Exception as e:
@@ -322,8 +331,10 @@ def download_issues():
     try:
         session = get_db_session()
 
-        # Serializer를 사용한 모든 이슈 조회
-        serialized_issues = IssueSerializer.get_all_issues(session)
+        # Service를 사용한 모든 이슈 조회
+        all_issues = IssueService.get_all_issues(session)
+        # 이슈 직렬화
+        serialized_issues = IssueSerializer.serialize_issues(all_issues)
 
         # Excel 생성을 위한 데이터 변환
         issues = [

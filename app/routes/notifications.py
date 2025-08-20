@@ -9,6 +9,7 @@ from app.serializers import (
     json_response,
     error_json_response,
 )
+from app.services import NotificationService
 
 notifications_bp = Blueprint("notifications", __name__)
 logger = logging.getLogger(__name__)
@@ -43,8 +44,17 @@ def get_unread_count():
 
         session = get_db_session()
         try:
-            # Serializer를 사용한 미확인 알림 개수 조회 (검증 포함)
-            unread_counts = NotificationSerializer.get_unread_count(session, query_data)
+            # 데이터 검증
+            validated_data = NotificationSerializer.deserialize_notification_query(
+                query_data
+            )
+            # Service를 사용한 미확인 알림 개수 조회
+            unread_counts = NotificationService.get_unread_count(
+                session, validated_data
+            )
+            # 마지막 확인 시간 업데이트
+            validated_data["check_type"] = "all"
+            NotificationService.update_last_check_time(session, validated_data)
             session.commit()
 
             return json_response(
