@@ -5,10 +5,8 @@ User service for user-related business logic
 import bcrypt
 import re
 from typing import Dict, Tuple
-from sqlalchemy.orm import Session
 
-from mvp_dashboard.app.utils.database import db_session_read_only
-
+from app.utils.database import db_session, db_session_read_only
 from .base_service import BaseService
 from app.models.models import User
 
@@ -109,87 +107,85 @@ class UserService(BaseService):
         return user
 
     @staticmethod
-    def change_password(session: Session, validated_data: Dict) -> User:
+    def change_password(validated_data: Dict) -> User:
         """비밀번호 변경"""
-        BaseService.validate_db_session(session)
-
         username = validated_data["username"]
         current_password = validated_data["current_password"]
         new_password = validated_data["new_password"]
 
-        # 현재 비밀번호 확인
-        user = session.query(User).filter(User.username == username).first()
+        with db_session() as session:
+            # 현재 비밀번호 확인
+            user = session.query(User).filter(User.username == username).first()
 
-        if not user:
-            raise ValueError("사용자명 또는 현재 비밀번호가 일치하지 않습니다.")
+            if not user:
+                raise ValueError("사용자명 또는 현재 비밀번호가 일치하지 않습니다.")
 
-        # 현재 비밀번호 검증 (bcrypt 사용)
-        if not UserService.verify_password(current_password, user.password):
-            raise ValueError("사용자명 또는 현재 비밀번호가 일치하지 않습니다.")
+            # 현재 비밀번호 검증 (bcrypt 사용)
+            if not UserService.verify_password(current_password, user.password):
+                raise ValueError("사용자명 또는 현재 비밀번호가 일치하지 않습니다.")
 
-        # 새 비밀번호 강도 검증
-        is_valid, error_message = UserService.validate_password_strength(new_password)
-        if not is_valid:
-            raise ValueError(error_message)
+            # 새 비밀번호 강도 검증
+            is_valid, error_message = UserService.validate_password_strength(new_password)
+            if not is_valid:
+                raise ValueError(error_message)
 
-        # 새 비밀번호 해싱
-        hashed_new_password = UserService.hash_password(new_password)
+            # 새 비밀번호 해싱
+            hashed_new_password = UserService.hash_password(new_password)
 
-        user.password = hashed_new_password
-        return user
+            user.password = hashed_new_password
+            return user
 
     @staticmethod
-    def create_user(session: Session, user_data: Dict) -> User:
+    def create_user(user_data: Dict) -> User:
         """사용자 생성"""
-        BaseService.validate_db_session(session)
+        with db_session() as session:
+            # 사용자명 중복 확인
+            existing_user = (
+                session.query(User).filter(User.username == user_data["username"]).first()
+            )
+            if existing_user:
+                raise ValueError("이미 존재하는 사용자명입니다.")
 
-        # 사용자명 중복 확인
-        existing_user = (
-            session.query(User).filter(User.username == user_data["username"]).first()
-        )
-        if existing_user:
-            raise ValueError("이미 존재하는 사용자명입니다.")
+            # 비밀번호 강도 검증
+            password = user_data.get("password", "")
+            is_valid, error_message = UserService.validate_password_strength(password)
+            if not is_valid:
+                raise ValueError(error_message)
 
-        # 비밀번호 강도 검증
-        password = user_data.get("password", "")
-        is_valid, error_message = UserService.validate_password_strength(password)
-        if not is_valid:
-            raise ValueError(error_message)
+            # 비밀번호 해싱
+            hashed_password = UserService.hash_password(password)
 
-        # 비밀번호 해싱
-        hashed_password = UserService.hash_password(password)
+            # 사용자 생성
+            user = User(
+                username=user_data["username"],
+                password=hashed_password,
+                # 다른 필드들도 필요에 따라 추가
+            )
 
-        # 사용자 생성
-        user = User(
-            username=user_data["username"],
-            password=hashed_password,
-            # 다른 필드들도 필요에 따라 추가
-        )
-
-        UserService.flush_and_get_id(session, user)
-        return user
+            UserService.flush_and_get_id(session, user)
+            return user
 
     @staticmethod
-    def get_user_by_username(session: Session, username: str) -> User:
+    def get_user_by_username(username: str) -> User:
         """사용자명으로 사용자 조회"""
-        BaseService.validate_db_session(session)
+        with db_session_read_only() as session:
+            user = session.query(User).filter(User.username == username).first()
+            if not user:
+                raise ValueError("사용자를 찾을 수 없습니다.")
 
-        user = session.query(User).filter(User.username == username).first()
-        if not user:
-            raise ValueError("사용자를 찾을 수 없습니다.")
-
-        return user
+            return user
 
     @staticmethod
-    def update_user(session: Session, user_id: int, update_data: Dict) -> User:
+    def update_user(user_id: int, update_data: Dict) -> User:
         """사용자 정보 업데이트"""
-        user = UserService.safe_get_by_id(
-            session, User, user_id, "사용자를 찾을 수 없습니다."
-        )
+        with db_session() as session:
+            user = UserService.safe_get_by_id(
+                session, User, user_id, "사용자를 찾을 수 없습니다."
+            )
 
-        # 업데이트할 필드들 적용
-        for field, value in update_data.items():
-            if hasattr(user, field) and field != "password":  # 비밀번호는 별도 메서드로
-                setattr(user, field, value)
+            # 업데이트할 필드들 적용
+            for field, value in update_data.items():
+                if hasattr(user, field) and field != "password":  # 비밀번호는 별도 메서드로
+                    setattr(user, field, value)
 
-        return user
+            return user
