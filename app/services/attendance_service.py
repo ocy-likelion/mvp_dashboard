@@ -16,7 +16,7 @@ class AttendanceService(BaseService):
     """출석 관련 비즈니스 로직 처리"""
 
     @staticmethod
-    def create_attendance(attendance_data: Dict) -> Attendance:
+    def create_attendance(attendance_data: Dict) -> Dict:
         """출퇴근 기록 저장"""
         # 시간 문자열을 Time 객체로 변환
         check_in_time = None
@@ -79,7 +79,18 @@ class AttendanceService(BaseService):
             )
 
             AttendanceService.flush_and_get_id(session, attendance)
-            return attendance
+            
+            # 딕셔너리 형태로 반환
+            return {
+                "id": attendance.id,
+                "date": attendance.date.strftime("%Y-%m-%d"),
+                "instructor": attendance.instructor,
+                "instructor_name": attendance.instructor_name,
+                "training_course": attendance.training_course,
+                "check_in_time": attendance.check_in_time.strftime("%H:%M") if attendance.check_in_time else None,
+                "check_out_time": attendance.check_out_time.strftime("%H:%M") if attendance.check_out_time else None,
+                "daily_log": attendance.daily_log,
+            }
 
     @staticmethod
     def generate_excel_file(serialized_records: List[Dict]) -> io.BytesIO:
@@ -123,13 +134,21 @@ class AttendanceService(BaseService):
     @staticmethod
     def get_attendance_records(limit: int = None) -> List[Attendance]:
         """출퇴근 기록 조회"""
-        with db_session_read_only() as session:
-            query = session.query(Attendance).order_by(Attendance.date.desc())
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            with db_session_read_only() as session:
+                query = session.query(Attendance).order_by(Attendance.date.desc())
 
-            if limit:
-                query = query.limit(limit)
+                if limit:
+                    query = query.limit(limit)
 
-            return query.all()
+                return query.all()
+        except Exception as e:
+            logger.error(f"Error in get_attendance_records: {str(e)}", exc_info=True)
+            # 오류 발생 시 빈 리스트 반환
+            return []
 
     @staticmethod
     def calculate_work_hours(check_in_time: time, check_out_time: time) -> float:

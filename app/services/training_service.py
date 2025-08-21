@@ -31,56 +31,72 @@ class TrainingService(BaseService):
             return course_names
 
     @staticmethod
-    def create_training_info(training_data: Dict) -> TrainingInfo:
+    def create_training_info(training_data: Dict) -> Dict:
         """훈련 과정 정보 저장"""
-        with db_session() as session:
-            # 중복 과정명 확인
-            existing_course = (
-                session.query(TrainingInfo)
-                .filter(TrainingInfo.training_course == training_data["training_course"])
-                .first()
-            )
-            if existing_course:
-                raise ValueError("이미 존재하는 훈련 과정명입니다.")
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            with db_session() as session:
+                # 중복 과정명 확인
+                existing_course = (
+                    session.query(TrainingInfo)
+                    .filter(TrainingInfo.training_course == training_data["training_course"])
+                    .first()
+                )
+                if existing_course:
+                    raise ValueError("이미 존재하는 훈련 과정명입니다.")
 
-            # 날짜 문자열을 Date 객체로 변환
-            start_date_obj = None
-            end_date_obj = None
+                # 날짜 문자열을 Date 객체로 변환
+                start_date_obj = None
+                end_date_obj = None
 
-            if training_data.get("start_date"):
-                try:
-                    start_date_obj = datetime.strptime(
-                        training_data["start_date"], "%Y-%m-%d"
-                    ).date()
-                except ValueError:
-                    raise ValueError(
-                        "시작 날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식을 사용해주세요."
-                    )
+                if training_data.get("start_date"):
+                    try:
+                        start_date_obj = datetime.strptime(
+                            training_data["start_date"], "%Y-%m-%d"
+                        ).date()
+                    except ValueError:
+                        raise ValueError(
+                            "시작 날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식을 사용해주세요."
+                        )
 
-            if training_data.get("end_date"):
-                try:
-                    end_date_obj = datetime.strptime(
-                        training_data["end_date"], "%Y-%m-%d"
-                    ).date()
-                except ValueError:
-                    raise ValueError(
-                        "종료 날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식을 사용해주세요."
-                    )
+                if training_data.get("end_date"):
+                    try:
+                        end_date_obj = datetime.strptime(
+                            training_data["end_date"], "%Y-%m-%d"
+                        ).date()
+                    except ValueError:
+                        raise ValueError(
+                            "종료 날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식을 사용해주세요."
+                        )
 
-            # 날짜 유효성 검증
-            if start_date_obj and end_date_obj and start_date_obj > end_date_obj:
-                raise ValueError("시작 날짜는 종료 날짜보다 이전이어야 합니다.")
+                # 날짜 유효성 검증
+                if start_date_obj and end_date_obj and start_date_obj > end_date_obj:
+                    raise ValueError("시작 날짜는 종료 날짜보다 이전이어야 합니다.")
 
-            training_info = TrainingInfo(
-                training_course=training_data["training_course"],
-                start_date=start_date_obj,
-                end_date=end_date_obj,
-                dept=training_data.get("dept"),
-                manager_name=training_data.get("manager_name"),
-            )
+                training_info = TrainingInfo(
+                    training_course=training_data["training_course"],
+                    start_date=start_date_obj,
+                    end_date=end_date_obj,
+                    dept=training_data.get("dept"),
+                    manager_name=training_data.get("manager_name"),
+                )
 
-            TrainingService.flush_and_get_id(session, training_info)
-            return training_info
+                TrainingService.flush_and_get_id(session, training_info)
+                
+                # 딕셔너리 형태로 반환
+                return {
+                    "id": training_info.id,
+                    "training_course": training_info.training_course,
+                    "start_date": training_info.start_date.strftime("%Y-%m-%d") if training_info.start_date else None,
+                    "end_date": training_info.end_date.strftime("%Y-%m-%d") if training_info.end_date else None,
+                    "dept": training_info.dept,
+                    "manager_name": training_info.manager_name,
+                }
+        except Exception as e:
+            logger.error(f"Error in create_training_info: {str(e)}", exc_info=True)
+            raise
 
     @staticmethod
     def get_all_training_info() -> List[Dict]:

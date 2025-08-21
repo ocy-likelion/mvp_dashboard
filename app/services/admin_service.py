@@ -23,44 +23,61 @@ class AdminService(BaseService):
     @staticmethod
     def get_daily_task_status(validated_data: Dict) -> Dict:
         """특정 날짜의 훈련 과정별 업무 체크 상태 조회"""
-        target_date = validated_data.get("date")
-        if target_date is None:
-            target_date = datetime.now().date()
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            target_date = validated_data.get("date")
+            if target_date is None:
+                target_date = datetime.now().date()
+            elif isinstance(target_date, str):
+                try:
+                    target_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+                except ValueError:
+                    target_date = datetime.now().date()
 
-        with db_session_read_only() as session:
-            # 모든 훈련 과정 조회
-            training_courses = session.query(TrainingInfo).all()
-            task_status_list = []
+            with db_session_read_only() as session:
+                # 모든 훈련 과정 조회
+                training_courses = session.query(TrainingInfo).all()
+                task_status_list = []
 
-            for course in training_courses:
-                # 특정 날짜의 체크된 데이터만 필터링
-                daily_checklist = (
-                    session.query(TaskChecklist)
-                    .filter(
-                        TaskChecklist.training_course == course.training_course,
-                        TaskChecklist.checked_date >= target_date,
-                        TaskChecklist.checked_date < target_date + timedelta(days=1),
+                for course in training_courses:
+                    # 특정 날짜의 체크된 데이터만 필터링
+                    daily_checklist = (
+                        session.query(TaskChecklist)
+                        .filter(
+                            TaskChecklist.training_course == course.training_course,
+                            TaskChecklist.checked_date >= target_date,
+                            TaskChecklist.checked_date < target_date + timedelta(days=1),
+                        )
+                        .all()
                     )
-                    .all()
-                )
 
-                total_tasks = len(daily_checklist)
-                checked_tasks = sum(1 for task in daily_checklist if task.is_checked)
-                check_rate = AdminService.calculate_check_rate(
-                    total_tasks, checked_tasks
-                )
+                    total_tasks = len(daily_checklist)
+                    checked_tasks = sum(1 for task in daily_checklist if task.is_checked)
+                    check_rate = AdminService.calculate_check_rate(
+                        total_tasks, checked_tasks
+                    )
 
-                task_status_list.append(
-                    {
-                        "training_course": course.training_course,
-                        "dept": course.dept,
-                        "check_rate": f"{check_rate}%",
-                    }
-                )
+                    task_status_list.append(
+                        {
+                            "training_course": course.training_course,
+                            "dept": course.dept,
+                            "check_rate": f"{check_rate}%",
+                        }
+                    )
 
+                return {
+                    "task_status": task_status_list,
+                    "total_courses": len(task_status_list),
+                    "timestamp": datetime.now()
+                }
+        except Exception as e:
+            logger.error(f"Error in get_daily_task_status: {str(e)}", exc_info=True)
+            # 오류 발생 시 기본 응답 반환
             return {
-                "task_status": task_status_list,
-                "total_courses": len(task_status_list),
+                "task_status": [],
+                "total_courses": 0,
                 "timestamp": datetime.now()
             }
 

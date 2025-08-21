@@ -57,15 +57,14 @@ def add_notice():
     """
     try:
         validated_data = NoticeSerializer.deserialize_notice_create(request.json)
-        notice = NoticeService.create_notice(validated_data)
-        serialized_notice = NoticeSerializer.serialize_notice(notice)
-
+        notice_data = NoticeService.create_notice(validated_data)
+        
         # Slack 알림 전송 (channel -> channel_type으로 수정)
         notifier = SlackNotifier()
-        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {serialized_notice['title']}\n작성자: {serialized_notice['created_by']}"
+        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {notice_data['title']}\n작성자: {notice_data['created_by']}"
         notifier.send_notification(notification_message, channel_type="notice")
 
-        return json_response(serialized_notice, status_code=201)
+        return json_response(notice_data, status_code=201)
     except Exception as e:
         logger.error(f"공지사항 추가 중 오류: {str(e)}")
         return error_json_response("공지사항 추가 실패", status_code=500)
@@ -85,11 +84,10 @@ def get_notices():
         description: 공지사항을 불러오는 데 실패함
     """
     try:
-        notices = NoticeService.get_notices()
-        serialized_notices = NoticeSerializer.serialize_notices(notices)
-
+        notices_data = NoticeService.get_notices()
+        # 서비스에서 이미 딕셔너리 형태로 반환되므로 직렬화 불필요
         return json_response(
-            data=serialized_notices, message="공지사항 조회 성공", status_code=200
+            data=notices_data, message="공지사항 조회 성공", status_code=200
         )
     except Exception as e:
         logger.error("Error retrieving notices", exc_info=True)

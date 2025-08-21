@@ -59,21 +59,20 @@ def create_issue():
     try:
         validated_data = IssueSerializer.deserialize_issue_create(request.json)
         issue_data = IssueService.create_issue(validated_data)
-        serialized_issue_data = IssueSerializer.serialize_issue(issue_data)
         try:
             notifier = SlackNotifier()
             message = (
                 f"*새로운 이슈가 등록되었습니다!*\n"
-                f">*과정:* {serialized_issue_data.get('training_course')}\n"
-                f">*내용:* {serialized_issue_data['content']}\n"
-                f">*작성자:* {serialized_issue_data.get('username')}"
+                f">*과정:* {issue_data.get('training_course')}\n"
+                f">*내용:* {issue_data['content']}\n"
+                f">*작성자:* {issue_data.get('username')}"
             )
             notifier.send_notification(message, "issue")
         except Exception as e:
             logger.error(f"Slack notification failed: {str(e)}")
 
         return json_response(
-            data=serialized_issue_data,
+            data=issue_data,
             message="이슈가 성공적으로 생성되었습니다.",
             status_code=201,
         )

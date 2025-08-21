@@ -32,8 +32,8 @@ class AttendanceCreateSchema(Schema):
     instructor = fields.Str()
     instructor_name = fields.Str()
     training_course = fields.Str()
-    check_in_time = fields.Time()
-    check_out_time = fields.Time()
+    check_in_time = fields.Str()  # 문자열로 변경
+    check_out_time = fields.Str()  # 문자열로 변경
     daily_log = fields.Bool()
 
 

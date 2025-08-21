@@ -13,10 +13,10 @@ class NoticeService(BaseService):
     """공지사항 관련 비즈니스 로직 처리"""
 
     # 공지사항 작성 권한이 있는 사용자 목록
-    ALLOWED_USERS = ["김은지", "장지연", "김슬기"]
+    ALLOWED_USERS = ["admin", "김은지", "장지연", "김슬기"]
 
     @staticmethod
-    def create_notice(notice_data: Dict) -> Notice:
+    def create_notice(notice_data: Dict) -> Dict:
         """공지사항 추가"""
         # 허용된 사용자 확인
         created_by = notice_data.get("created_by")
@@ -33,34 +33,53 @@ class NoticeService(BaseService):
             )
 
             NoticeService.flush_and_get_id(session, notice)
-            return notice
+            
+            # 딕셔너리 형태로 반환
+            return {
+                "id": notice.id,
+                "type": notice.type or "공지사항",
+                "title": notice.title,
+                "content": notice.content,
+                "date": notice.date.strftime("%Y-%m-%d %H:%M:%S") if notice.date else None,
+                "created_by": notice.created_by,
+                "modified_by": notice.modified_by,
+                "is_deleted": notice.is_deleted,
+            }
 
     @staticmethod
     def get_notices(include_deleted: bool = False) -> List[Dict]:
         """공지사항 조회"""
-        with db_session_read_only() as session:
-            # 기본적으로 삭제되지 않은 공지사항만 조회
-            query = session.query(Notice)
-            if not include_deleted:
-                query = query.filter(Notice.is_deleted == False)
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            with db_session_read_only() as session:
+                # 기본적으로 삭제되지 않은 공지사항만 조회
+                query = session.query(Notice)
+                if not include_deleted:
+                    query = query.filter(Notice.is_deleted == False)
 
-            notices = query.order_by(Notice.date.desc()).all()
+                notices = query.order_by(Notice.date.desc()).all()
 
-            notices_data = []
-            for notice in notices:
-                notice_dict = {
-                    "id": notice.id,
-                    "type": notice.type or "공지사항",
-                    "title": notice.title,
-                    "content": notice.content,
-                    "date": notice.date.strftime("%Y-%m-%d %H:%M:%S"),
-                    "created_by": notice.created_by,
-                    "modified_by": notice.modified_by,
-                    "is_deleted": notice.is_deleted,
-                }
-                notices_data.append(notice_dict)
+                notices_data = []
+                for notice in notices:
+                    notice_dict = {
+                        "id": notice.id,
+                        "type": notice.type or "공지사항",
+                        "title": notice.title,
+                        "content": notice.content,
+                        "date": notice.date.strftime("%Y-%m-%d %H:%M:%S") if notice.date else None,
+                        "created_by": notice.created_by,
+                        "modified_by": notice.modified_by,
+                        "is_deleted": notice.is_deleted,
+                    }
+                    notices_data.append(notice_dict)
 
-            return notices_data
+                return notices_data
+        except Exception as e:
+            logger.error(f"Error in get_notices: {str(e)}", exc_info=True)
+            # 오류 발생 시 빈 리스트 반환
+            return []
 
     @staticmethod
     def update_notice(notice_id: int, validated_data: Dict) -> Notice:

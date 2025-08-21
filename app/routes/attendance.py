@@ -34,16 +34,35 @@ def get_attendance():
     """
     try:
         format_type = request.args.get("format", "json")  # 기본값 JSON
-        validated_data = AttendanceSerializer.deserialize_attendance_get(request.args)
-        attendance_records = AttendanceService.get_attendance_records(validated_data)
-        serialized_records = AttendanceSerializer.serialize_attendances(
-            attendance_records
-        )
+        # 간단한 파라미터 처리 (직렬화 오류 방지)
+        limit = request.args.get("limit")
+        if limit:
+            try:
+                limit = int(limit)
+            except ValueError:
+                limit = None
+        
+        attendance_records = AttendanceService.get_attendance_records(limit)
+        
+        # 딕셔너리 형태로 변환
+        records_data = []
+        for record in attendance_records:
+            record_dict = {
+                "id": record.id,
+                "date": record.date.strftime("%Y-%m-%d"),
+                "instructor": record.instructor,
+                "instructor_name": record.instructor_name,
+                "training_course": record.training_course,
+                "check_in_time": record.check_in_time.strftime("%H:%M") if record.check_in_time else None,
+                "check_out_time": record.check_out_time.strftime("%H:%M") if record.check_out_time else None,
+                "daily_log": record.daily_log,
+            }
+            records_data.append(record_dict)
 
         # JSON 응답 (기본값)
         if format_type == "json":
             return json_response(
-                data=serialized_records,
+                data=records_data,
                 message="출퇴근 기록 조회 성공",
                 status_code=200,
             )
@@ -51,7 +70,7 @@ def get_attendance():
         # Excel 파일 다운로드
         elif format_type == "excel":
             # Service를 사용한 Excel 파일 생성
-            excel_file = AttendanceService.generate_excel_file(serialized_records)
+            excel_file = AttendanceService.generate_excel_file(records_data)
             return send_file(
                 excel_file,
                 mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -123,11 +142,10 @@ def save_attendance():
         validated_data = AttendanceSerializer.deserialize_attendance_create(
             request.json
         )
-        attendance = AttendanceService.create_attendance(validated_data)
-        serialized_attendance = AttendanceSerializer.serialize_attendance(attendance)
+        attendance_data = AttendanceService.create_attendance(validated_data)
 
         return json_response(
-            data=serialized_attendance,
+            data=attendance_data,
             message="출퇴근 기록 저장 성공!",
             status_code=201,
         )

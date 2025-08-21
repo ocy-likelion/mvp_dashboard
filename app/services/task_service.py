@@ -123,16 +123,37 @@ class TaskService(BaseService):
     @staticmethod
     def get_tasks(validated_data: Dict) -> List[Dict]:
         """업무 체크리스트 조회"""
-        task_category = validated_data.get("task_category")
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            task_category = validated_data.get("task_category")
 
-        with db_session_read_only() as session:
-            tasks_query = session.query(TaskItem).order_by(TaskItem.id.asc())
+            with db_session_read_only() as session:
+                tasks_query = session.query(TaskItem).order_by(TaskItem.id.asc())
 
-            if task_category:
-                tasks_query = tasks_query.filter(
-                    TaskItem.task_category == task_category
-                )
+                if task_category:
+                    tasks_query = tasks_query.filter(
+                        TaskItem.task_category == task_category
+                    )
 
-            tasks = tasks_query.all()
+                tasks = tasks_query.all()
 
-            return tasks
+                # 딕셔너리 형태로 변환
+                tasks_data = []
+                for task in tasks:
+                    task_dict = {
+                        "id": task.id,
+                        "task_name": task.task_name,
+                        "task_category": task.task_category,
+                        "task_period": task.task_period,
+                        "guide": task.guide,
+                        "due": task.due,
+                    }
+                    tasks_data.append(task_dict)
+
+                return tasks_data
+        except Exception as e:
+            logger.error(f"Error in get_tasks: {str(e)}", exc_info=True)
+            # 오류 발생 시 빈 리스트 반환
+            return []

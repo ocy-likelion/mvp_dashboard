@@ -36,11 +36,10 @@ def get_tasks():
     try:
         query_params = {"task_category": request.args.get("task_category")}
         validated_data = TaskSerializer.deserialize_task_filter(query_params)
-        tasks = TaskService.get_tasks(validated_data)
-        serialized_tasks = TaskSerializer.serialize_task_items(tasks)
+        tasks_data = TaskService.get_tasks(validated_data)
 
         return json_response(
-            data=serialized_tasks, message="업무 체크리스트 조회 성공", status_code=200
+            data=tasks_data, message="업무 체크리스트 조회 성공", status_code=200
         )
     except Exception as e:
         logger.error("Error retrieving tasks", exc_info=True)

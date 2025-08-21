@@ -34,13 +34,14 @@ def get_task_status():
         description: 체크 상태 조회 실패
     """
     try:
-        query_params = {"date": request.args.get("date")}
-        validated_data = AdminSerializer.deserialize_date_filter(query_params)
+        # 간단한 파라미터 처리 (직렬화 오류 방지)
+        date_param = request.args.get("date")
+        validated_data = {"date": date_param} if date_param else {}
+        
         task_status = AdminService.get_daily_task_status(validated_data)
-        serialized_task_status = AdminSerializer.serialize_task_status(task_status)
 
         return json_response(
-            data=serialized_task_status, message="업무 체크 상태 조회 성공", status_code=200
+            data=task_status, message="업무 체크 상태 조회 성공", status_code=200
         )
 
     except ValueError as e:

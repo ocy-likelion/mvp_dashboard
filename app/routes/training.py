@@ -93,10 +93,10 @@ def save_training_info():
         validated_data = TrainingSerializer.deserialize_training_info_create(
             request.json
         )
-        TrainingService.create_training_info(validated_data)
+        training_data = TrainingService.create_training_info(validated_data)
 
         return json_response(
-            data=None, message="훈련 과정이 저장되었습니다!", status_code=201
+            data=training_data, message="훈련 과정이 저장되었습니다!", status_code=201
         )
     except Exception as e:
         logger.error("Error saving training info", exc_info=True)

@@ -27,24 +27,26 @@ class TrainingInfoCreateSchema(Schema):
     """교육 정보 생성용 스키마"""
 
     training_course = fields.Str(required=True)  # nullable=False
-    start_date = fields.Str(required=True)  # 문자열로 받아서 변환
-    end_date = fields.Str(required=True)  # 문자열로 받아서 변환
-    dept = fields.Str(required=True)
-    manager_name = fields.Str(required=True)
+    start_date = fields.Str()  # 모델에서 nullable=True
+    end_date = fields.Str()    # 모델에서 nullable=True
+    dept = fields.Str()        # 모델에서 nullable=True
+    manager_name = fields.Str() # 모델에서 nullable=True
 
     @validates("start_date")
     def validate_start_date(self, value):
-        try:
-            datetime.strptime(value, "%Y-%m-%d")
-        except ValueError:
-            raise ValidationError("시작 날짜는 YYYY-MM-DD 형식이어야 합니다.")
+        if value:  # None이 아닌 경우만 검증
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                raise ValidationError("시작 날짜는 YYYY-MM-DD 형식이어야 합니다.")
 
     @validates("end_date")
     def validate_end_date(self, value):
-        try:
-            datetime.strptime(value, "%Y-%m-%d")
-        except ValueError:
-            raise ValidationError("종료 날짜는 YYYY-MM-DD 형식이어야 합니다.")
+        if value:  # None이 아닌 경우만 검증
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                raise ValidationError("종료 날짜는 YYYY-MM-DD 형식이어야 합니다.")
 
 
 class TrainingInfoUpdateSchema(Schema):

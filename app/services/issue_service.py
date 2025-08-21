@@ -13,21 +13,39 @@ class IssueService(BaseService):
     """이슈 관련 비즈니스 로직 처리"""
 
     @staticmethod
-    def create_issue(issue_data: Dict) -> Issue:
+    def create_issue(issue_data: Dict) -> Dict:
         """이슈 생성"""
-        with db_session() as session:
-            # 이슈 생성
-            issue = Issue(
-                content=issue_data["content"],
-                training_course=issue_data.get("training_course"),
-                username=issue_data.get("username"),
-                created_by=issue_data.get("created_by", issue_data.get("username")),
-                date=issue_data.get("date"),
-                resolved=False,
-            )
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            with db_session() as session:
+                # 이슈 생성
+                issue = Issue(
+                    content=issue_data["content"],
+                    training_course=issue_data.get("training_course"),
+                    username=issue_data.get("username"),
+                    created_by=issue_data.get("created_by", issue_data.get("username")),
+                    date=issue_data.get("date"),
+                    resolved=False,
+                )
 
-            IssueService.flush_and_get_id(session, issue)
-            return issue
+                IssueService.flush_and_get_id(session, issue)
+                
+                # 딕셔너리 형태로 반환
+                return {
+                    "id": issue.id,
+                    "content": issue.content,
+                    "training_course": issue.training_course,
+                    "username": issue.username,
+                    "created_by": issue.created_by,
+                    "date": issue.date.strftime("%Y-%m-%d") if issue.date else None,
+                    "created_at": issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "resolved": issue.resolved,
+                }
+        except Exception as e:
+            logger.error(f"Error in create_issue: {str(e)}", exc_info=True)
+            raise
 
     @staticmethod
     def get_unresolved_issues() -> List[Dict]:

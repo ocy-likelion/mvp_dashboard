@@ -25,7 +25,7 @@ class NoticeSchema(SQLAlchemyAutoSchema):
         load_instance = True
         include_fk = True
 
-    date = fields.DateTime(dump_only=True)
+    date = fields.Str(dump_only=True)  # 문자열로 변경
     reads = fields.Nested(NoticeReadSchema, many=True, dump_only=True)
 
     @validates("title")

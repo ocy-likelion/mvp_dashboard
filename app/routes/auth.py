@@ -57,6 +57,9 @@ def login():
             data=serialized_user, message="로그인 성공!", status_code=200
         )
 
+    except ValueError as e:
+        logger.warning(f"로그인 실패: {str(e)}")
+        return error_json_response(str(e), status_code=400)
     except Exception as e:
         logger.error("로그인 오류", exc_info=True)
         return error_json_response("서버 오류 발생", status_code=500)
