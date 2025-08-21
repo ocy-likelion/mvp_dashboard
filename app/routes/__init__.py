@@ -11,6 +11,7 @@ def register_routes(app):
     from app.routes.training import training_bp
     from app.routes.admin import admin_bp
     from app.routes.views import views_bp
+    from app.routes.notifications import notifications_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(notices_bp)
@@ -20,6 +21,7 @@ def register_routes(app):
     app.register_blueprint(training_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(views_bp)
+    app.register_blueprint(notifications_bp)
 
     # 시스템 상태 확인 라우트
     @app.route("/healthcheck", methods=["GET"])

@@ -93,10 +93,7 @@ def get_notices():
         )
     except Exception as e:
         logger.error("Error retrieving notices", exc_info=True)
-        return (
-            error_json_response("공지사항을 불러오는데 실패했습니다.", status_code=500),
-            500,
-        )
+        return error_json_response("공지사항을 불러오는데 실패했습니다.", status_code=500)
 
 
 @notices_bp.route("/notices/<int:notice_id>", methods=["PUT"])
@@ -145,15 +142,12 @@ def update_notice(notice_id):
         validated_data = NoticeSerializer.deserialize_notice_update(request.json)
         notice = NoticeService.update_notice(notice_id, validated_data)
         serialized_notice = NoticeSerializer.serialize_notice(notice)
-        return json_response(serialized_notice), 200
+        return json_response(serialized_notice, status_code=200)
 
     except Exception as e:
         logger.error("공지사항 수정 오류", exc_info=True)
-        return (
-            error_json_response(
-                "공지사항 수정 중 오류가 발생했습니다.", status_code=500
-            ),
-            500,
+        return error_json_response(
+            "공지사항 수정 중 오류가 발생했습니다.", status_code=500
         )
 
 
@@ -183,15 +177,12 @@ def delete_notice(notice_id):
         notice = NoticeService.delete_notice(notice_id)
         serialized_notice = NoticeSerializer.serialize_notice(notice)
 
-        return json_response(serialized_notice), 200
+        return json_response(serialized_notice, status_code=200)
 
     except Exception as e:
         logger.error("공지사항 삭제 오류", exc_info=True)
-        return (
-            error_json_response(
-                "공지사항 삭제 중 오류가 발생했습니다.", status_code=500
-            ),
-            500,
+        return error_json_response(
+            "공지사항 삭제 중 오류가 발생했습니다.", status_code=500
         )
 
 
@@ -231,7 +222,7 @@ def mark_notice_read():
         validated_data = NoticeSerializer.deserialize_notice_read_create(request.json)
         notice_read = NoticeService.mark_notice_read(validated_data)
         serialized_notice_read = NoticeSerializer.serialize_notice_read(notice_read)
-        return json_response(serialized_notice_read), 201
+        return json_response(serialized_notice_read, status_code=201)
     except Exception as e:
         logger.error("공지사항 읽음 표시 오류", exc_info=True)
         return error_json_response("공지사항 읽음 표시 실패", status_code=500)
