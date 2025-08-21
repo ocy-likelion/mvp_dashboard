@@ -13,69 +13,55 @@ from app.models.models import (
     TaskItem,
     TrainingInfo,
 )
+from app.utils.database import db_session, db_session_read_only
 
 
 class UncheckedService(BaseService):
     """미체크 항목 관련 비즈니스 로직 처리"""
 
     @staticmethod
-    def get_irregular_tasks(session: Session) -> List[Dict]:
+    def get_irregular_tasks() -> List[Dict]:
         """비정기 업무 목록 조회"""
-        BaseService.validate_db_session(session)
-
-        # 가장 최근 상태만 조회 (resolved=False인 항목들)
-        tasks_query = (
-            session.query(UncheckedDescription)
-            .filter(UncheckedDescription.resolved == False)
-            .order_by(UncheckedDescription.created_at.desc())
-        )
-
-        tasks = []
-        for task in tasks_query.all():
-            tasks.append(
-                {
-                    "id": task.id,
-                    "task_name": task.content,
-                    "is_checked": task.resolved,
-                    "checked_date": task.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    "training_course": task.training_course,
-                }
+        with db_session_read_only() as session:
+            # 가장 최근 상태만 조회 (resolved=False인 항목들)
+            tasks_query = (
+                session.query(UncheckedDescription)
+                .filter(UncheckedDescription.resolved == False)
+                .order_by(UncheckedDescription.created_at.desc())
             )
 
-        return tasks
+            tasks = []
+            for task in tasks_query.all():
+                tasks.append(
+                    {
+                        "id": task.id,
+                        "task_name": task.content,
+                        "is_checked": task.resolved,
+                        "checked_date": task.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                        "training_course": task.training_course,
+                    }
+                )
+
+            return tasks
 
     @staticmethod
-    def create_irregular_task(
-        session: Session, task_name: str, training_course: str, is_checked: bool
-    ) -> UncheckedDescription:
-        """비정기 업무 생성"""
-        BaseService.validate_db_session(session)
-
-        irregular_task = UncheckedDescription(
-            content=task_name,
-            training_course=training_course,
-            resolved=is_checked,
-        )
-
-        UncheckedService.flush_and_get_id(session, irregular_task)
-        return irregular_task
-
-    @staticmethod
-    def save_irregular_tasks(session: Session, validated_data: Dict) -> None:
+    def save_irregular_tasks(validated_data: Dict) -> None:
         """비정기 업무 저장"""
-        BaseService.validate_db_session(session)
+        with db_session() as session:
+            training_course = validated_data["training_course"]
+            updates = validated_data["updates"]
 
-        training_course = validated_data["training_course"]
-        updates = validated_data["updates"]
+            for update in updates:
+                task_name = update.get("task_name")
+                is_checked = update.get("is_checked")
 
-        for update in updates:
-            task_name = update.get("task_name")
-            is_checked = update.get("is_checked")
-
-            # 비정기 업무 생성
-            UncheckedService.create_irregular_task(
-                session, task_name, training_course, is_checked
-            )
+                # 비정기 업무 생성
+                irregular_task = UncheckedDescription(
+                    content=task_name,
+                    training_course=training_course,
+                    resolved=is_checked,
+                )
+                UncheckedService.flush_and_get_id(session, irregular_task)
 
     @staticmethod
     def get_unchecked_descriptions(

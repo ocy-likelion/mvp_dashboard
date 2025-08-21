@@ -7,6 +7,8 @@ import re
 from typing import Dict, Tuple
 from sqlalchemy.orm import Session
 
+from mvp_dashboard.app.utils.database import db_session_read_only
+
 from .base_service import BaseService
 from app.models.models import User
 
@@ -88,15 +90,14 @@ class UserService(BaseService):
         return password.startswith("$2b$")
 
     @staticmethod
-    def login(session: Session, validated_data: Dict) -> Dict:
+    def login(validated_data: Dict) -> User:
         """로그인 처리"""
-        BaseService.validate_db_session(session)
-
         username = validated_data["username"]
         password = validated_data["password"]
 
-        # 사용자 조회
-        user = session.query(User).filter(User.username == username).first()
+        with db_session_read_only() as session:
+            # 사용자 조회
+            user = session.query(User).filter(User.username == username).first()
 
         if not user:
             raise ValueError("잘못된 ID 또는 비밀번호입니다.")
@@ -105,7 +106,7 @@ class UserService(BaseService):
         if not UserService.verify_password(password, user.password):
             raise ValueError("잘못된 ID 또는 비밀번호입니다.")
 
-        return {"user_id": user.id, "username": user.username}
+        return user
 
     @staticmethod
     def change_password(session: Session, validated_data: Dict) -> User:
