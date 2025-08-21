@@ -7,6 +7,7 @@
 from .base import Serializer, ResponseSerializer
 
 # Domain serializers
+from .admin import AdminSerializer
 from .user import UserSerializer
 from .attendance import AttendanceSerializer
 from .issue import IssueSerializer
@@ -29,6 +30,7 @@ __all__ = [
     "Serializer",
     "ResponseSerializer",
     # Domain serializers
+    "AdminSerializer",
     "UserSerializer",
     "AttendanceSerializer",
     "IssueSerializer",

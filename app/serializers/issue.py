@@ -9,6 +9,7 @@ from app.schemas import (
     issue_create_schema,
     issue_comment_create_schema,
     issue_resolve_schema,
+    issue_comment_filter_schema,
 )
 
 
@@ -34,6 +35,11 @@ class IssueSerializer:
     def serialize_issue_comments(comments: List) -> List[Dict]:
         """여러 이슈 댓글 직렬화"""
         return Serializer.serialize(comments, issue_comments_schema, many=True)
+
+    @staticmethod
+    def deserialize_issue_comment_get(query_params: Dict) -> Dict:
+        """이슈 댓글 조회 쿼리 파라미터 검증 및 변환"""
+        return Serializer.deserialize(query_params, issue_comment_filter_schema)
 
     @staticmethod
     def deserialize_issue_create(data: Dict) -> Dict:

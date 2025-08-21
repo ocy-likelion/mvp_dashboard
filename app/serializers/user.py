@@ -1,11 +1,8 @@
-from typing import Dict, List
+from typing import Dict
 
 from .base import Serializer
 from app.schemas import (
     user_schema,
-    users_schema,
-    user_create_schema,
-    user_update_schema,
     user_login_schema,
     password_change_schema,
 )
@@ -13,6 +10,11 @@ from app.schemas import (
 
 class UserSerializer:
     """사용자 관련 직렬화 함수들"""
+
+    @staticmethod
+    def serialize_user(user) -> Dict:
+        """사용자 데이터 직렬화"""
+        return Serializer.serialize(user, user_schema)
 
     @staticmethod
     def deserialize_user_login(data: Dict) -> Dict:
