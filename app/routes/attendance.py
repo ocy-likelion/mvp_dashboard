@@ -1,6 +1,5 @@
 from flask import Blueprint, request, send_file
 import logging
-from app.models.db import get_db_session
 
 from app.serializers import (
     AttendanceSerializer,
@@ -35,17 +34,11 @@ def get_attendance():
     """
     try:
         format_type = request.args.get("format", "json")  # 기본값 JSON
-
-        session = get_db_session()
-
-        # Service를 사용한 출퇴근 기록 조회
-        attendance_records = AttendanceService.get_attendance_records(session)
-        # Serializer로 데이터 직렬화
+        validated_data = AttendanceSerializer.deserialize_attendance_get(request.args)
+        attendance_records = AttendanceService.get_attendance_records(validated_data)
         serialized_records = AttendanceSerializer.serialize_attendances(
             attendance_records
         )
-
-        session.close()
 
         # JSON 응답 (기본값)
         if format_type == "json":
@@ -127,27 +120,11 @@ def save_attendance():
         description: 출퇴근 기록 저장 실패
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = AttendanceSerializer.deserialize_attendance_create(data)
-            # Service를 사용한 출퇴근 기록 저장
-            attendance = AttendanceService.create_attendance(session, validated_data)
-            serialized_attendance = AttendanceSerializer.serialize_attendance(
-                attendance
-            )
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"출퇴근 기록 저장 중 오류: {str(e)}")
-            return error_json_response("출퇴근 기록 저장 실패", status_code=500)
-        finally:
-            session.close()
+        validated_data = AttendanceSerializer.deserialize_attendance_create(
+            request.json
+        )
+        attendance = AttendanceService.create_attendance(validated_data)
+        serialized_attendance = AttendanceSerializer.serialize_attendance(attendance)
 
         return json_response(
             data=serialized_attendance,

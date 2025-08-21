@@ -2,7 +2,6 @@ from flask import Blueprint, request, send_file
 import io
 import pandas as pd
 import logging
-from app.models.db import get_db_session
 
 from app.utils.notifications import SlackNotifier
 from app.serializers import (
@@ -58,47 +57,23 @@ def create_issue():
         description: 서버 오류
     """
     try:
-        data = request.json
-        logger.info(f"Received issue data: {data}")
-
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        # 3. 데이터베이스 저장 - Serializer 사용
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = IssueSerializer.deserialize_issue_create(data)
-            # Service를 사용한 이슈 생성
-            issue = IssueService.create_issue(session, validated_data)
-            issue_data = IssueSerializer.serialize_issue(issue)
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"이슈 생성 중 오류: {str(e)}")
-            return error_json_response(
-                "이슈 생성 중 오류가 발생했습니다.", status_code=500
-            )
-        finally:
-            session.close()
-
-        # 4. Slack 알림 전송
+        validated_data = IssueSerializer.deserialize_issue_create(request.json)
+        issue_data = IssueService.create_issue(validated_data)
+        serialized_issue_data = IssueSerializer.serialize_issue(issue_data)
         try:
             notifier = SlackNotifier()
             message = (
                 f"*새로운 이슈가 등록되었습니다!*\n"
-                f">*과정:* {issue_data.get('training_course')}\n"
-                f">*내용:* {issue_data['content']}\n"
-                f">*작성자:* {issue_data.get('username')}"
+                f">*과정:* {serialized_issue_data.get('training_course')}\n"
+                f">*내용:* {serialized_issue_data['content']}\n"
+                f">*작성자:* {serialized_issue_data.get('username')}"
             )
             notifier.send_notification(message, "issue")
         except Exception as e:
             logger.error(f"Slack notification failed: {str(e)}")
 
-        # 5. 성공 응답
         return json_response(
-            data=issue_data,
+            data=serialized_issue_data,
             message="이슈가 성공적으로 생성되었습니다.",
             status_code=201,
         )
@@ -123,15 +98,11 @@ def get_issues():
         description: 이슈 목록 조회 실패
     """
     try:
-        session = get_db_session()
-
-        # Service를 사용한 이슈 목록 조회
-        response_data = IssueService.get_unresolved_issues(session)
-
-        session.close()
+        response_data = IssueService.get_unresolved_issues()
+        serialized_response_data = IssueSerializer.serialize_issues(response_data)
 
         return json_response(
-            data=response_data, message="이슈 목록 조회 성공", status_code=200
+            data=serialized_response_data, message="이슈 목록 조회 성공", status_code=200
         )
 
     except Exception as e:
@@ -179,27 +150,9 @@ def add_comment():
         description: 서버 오류
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = IssueSerializer.deserialize_issue_comment_create(data)
-            # Service를 사용한 댓글 추가
-            comment = IssueService.add_comment(session, validated_data)
-            session.commit()
-
-            # 저장된 댓글 직렬화
-            serialized_comment = IssueSerializer.serialize_issue_comment(comment)
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"댓글 등록 중 오류: {str(e)}")
-            return error_json_response("댓글 등록 실패", status_code=500)
-        finally:
-            session.close()
+        validated_data = IssueSerializer.deserialize_issue_comment_create(request.json)
+        comment = IssueService.add_comment(validated_data)
+        serialized_comment = IssueSerializer.serialize_issue_comment(comment)
 
         # 댓글 등록 알림
         notifier = SlackNotifier()
@@ -236,21 +189,13 @@ def get_issue_comments():
         description: 댓글 조회 실패
     """
     try:
-        issue_id = request.args.get("issue_id")
+        validated_data = IssueSerializer.deserialize_issue_comment_get(request.args)
+        comments = IssueService.get_issue_comments(validated_data)
+        serialized_comments = IssueSerializer.serialize_issue_comments(comments)
 
-        session = get_db_session()
-        try:
-            # Service를 사용한 이슈 댓글 조회
-            comments = IssueService.get_issue_comments(session, int(issue_id))
-            # 댓글 직렬화
-            serialized_comments = IssueSerializer.serialize_issue_comments(comments)
-
-            return json_response(
-                data=serialized_comments, message="댓글 조회 성공", status_code=200
-            )
-
-        finally:
-            session.close()
+        return json_response(
+            data=serialized_comments, message="댓글 조회 성공", status_code=200
+        )
 
     except Exception as e:
         logger.error("Error retrieving issue comments", exc_info=True)
@@ -286,25 +231,9 @@ def resolve_issue():
         description: 이슈 해결 실패
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = IssueSerializer.deserialize_issue_resolve(data)
-            # Service를 사용한 이슈 해결
-            issue = IssueService.resolve_issue(session, validated_data)
-            serialized_issue = IssueSerializer.serialize_issue(issue)
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"이슈 해결 중 오류: {str(e)}")
-            return error_json_response("이슈 해결 실패", status_code=500)
-        finally:
-            session.close()
+        validated_data = IssueSerializer.deserialize_issue_resolve(request.json)
+        issue = IssueService.resolve_issue(validated_data)
+        serialized_issue = IssueSerializer.serialize_issue(issue)
 
         return json_response(
             data=serialized_issue, message="이슈가 해결되었습니다.", status_code=200
@@ -329,11 +258,7 @@ def download_issues():
         description: 이슈사항 다운로드 실패
     """
     try:
-        session = get_db_session()
-
-        # Service를 사용한 모든 이슈 조회
-        all_issues = IssueService.get_all_issues(session)
-        # 이슈 직렬화
+        all_issues = IssueService.get_all_issues()
         serialized_issues = IssueSerializer.serialize_issues(all_issues)
 
         # Excel 생성을 위한 데이터 변환
@@ -348,8 +273,6 @@ def download_issues():
             )
             for issue in serialized_issues
         ]
-
-        session.close()
 
         # DataFrame 생성
         columns = ["ID", "이슈 내용", "날짜", "훈련 과정", "생성일", "해결됨"]

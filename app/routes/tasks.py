@@ -1,6 +1,5 @@
 from flask import Blueprint, request
 import logging
-from app.models.db import get_db_session
 from app.serializers import (
     TaskSerializer,
     UncheckedSerializer,
@@ -35,16 +34,10 @@ def get_tasks():
         description: 서버 오류로 인해 업무 체크리스트 조회 실패
     """
     try:
-        task_category = request.args.get("task_category")  # 선택적 필터링
-
-        session = get_db_session()
-
-        # Service를 사용한 업무 체크리스트 조회
-        tasks = TaskService.get_tasks(session, task_category)
-        # Serializer로 데이터 직렬화
+        query_params = {"task_category": request.args.get("task_category")}
+        validated_data = TaskSerializer.deserialize_task_filter(query_params)
+        tasks = TaskService.get_tasks(validated_data)
         serialized_tasks = TaskSerializer.serialize_task_items(tasks)
-
-        session.close()
 
         return json_response(
             data=serialized_tasks, message="업무 체크리스트 조회 성공", status_code=200
@@ -95,24 +88,8 @@ def save_tasks():
         description: 업무 체크리스트 저장 실패
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = TaskSerializer.deserialize_task_update(data)
-            # Service를 사용한 체크리스트 저장/업데이트
-            TaskService.save_task_checklist(session, validated_data)
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"체크리스트 저장 중 오류: {str(e)}")
-            return error_json_response("체크리스트 저장 실패", status_code=500)
-        finally:
-            session.close()
+        validated_data = TaskSerializer.deserialize_task_update(request.json)
+        TaskService.save_task_checklist(validated_data)
 
         return json_response(
             data=None,
@@ -168,30 +145,14 @@ def update_tasks():
         description: 업데이트 실패
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
         try:
-            # 데이터 검증
-            validated_data = TaskSerializer.deserialize_task_update(data)
-            # Service를 사용한 체크리스트 업데이트
-            result = TaskService.update_task_checklist(session, validated_data)
-            # Serializer를 사용한 응답 데이터 구성
+            validated_data = TaskSerializer.deserialize_task_update(request.json)
+            result = TaskService.update_task_checklist(validated_data)
             response_data = TaskSerializer.serialize_task_update_result(result)
-            session.commit()
 
         except ValueError as e:
-            session.rollback()
             # 비즈니스 규칙 위반 (404 에러)
             return error_json_response(str(e), status_code=404)
-        except Exception as e:
-            session.rollback()
-            logger.error(f"체크리스트 업데이트 중 오류: {str(e)}")
-            return error_json_response("체크리스트 업데이트 실패", status_code=500)
-        finally:
-            session.close()
 
         return json_response(
             data=response_data,
@@ -219,15 +180,11 @@ def get_irregular_tasks():
         description: 비정기 업무 조회 실패
     """
     try:
-        session = get_db_session()
-
-        # Service를 사용한 비정기 업무 조회
-        tasks = UncheckedService.get_irregular_tasks(session)
-
-        session.close()
+        tasks = UncheckedService.get_irregular_tasks()
+        serialized_tasks = TaskSerializer.serialize_task_items(tasks)
 
         return json_response(
-            data=tasks, message="비정기 업무 체크리스트 조회 성공", status_code=200
+            data=serialized_tasks, message="비정기 업무 체크리스트 조회 성공", status_code=200
         )
 
     except Exception as e:
@@ -271,26 +228,10 @@ def save_irregular_tasks():
         description: 비정기 업무 체크리스트 저장 실패
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = UncheckedSerializer.deserialize_irregular_task_create(data)
-            # Service를 사용한 비정기 업무 저장
-            UncheckedService.save_irregular_tasks(session, validated_data)
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"비정기 업무 체크리스트 저장 중 오류: {str(e)}")
-            return error_json_response(
-                "비정기 업무 체크리스트 저장 실패", status_code=500
-            )
-        finally:
-            session.close()
+        validated_data = UncheckedSerializer.deserialize_irregular_task_create(
+            request.json
+        )
+        UncheckedService.save_irregular_tasks(validated_data)
 
         return json_response(
             data=None,

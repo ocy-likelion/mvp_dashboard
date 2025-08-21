@@ -1,7 +1,7 @@
 from flask import Blueprint, request
 import logging
-from app.models.db import get_db_session
 from app.serializers import (
+    AdminSerializer,
     json_response,
     error_json_response,
 )
@@ -34,25 +34,20 @@ def get_task_status():
         description: 체크 상태 조회 실패
     """
     try:
-        session = get_db_session()
-
-        # 날짜 파라미터 검증
-        date_str = request.args.get("date")
-        try:
-            target_date = AdminService.validate_date_filter(date_str)
-        except ValueError as e:
-            return error_json_response(str(e), status_code=400)
-
-        # Service를 통한 데이터 조회
-        task_status = AdminService.get_daily_task_status(session, target_date)
-
-        session.close()
+        query_params = {"date": request.args.get("date")}
+        validated_data = AdminSerializer.deserialize_date_filter(query_params)
+        task_status = AdminService.get_daily_task_status(validated_data)
+        serialized_task_status = AdminSerializer.serialize_task_status(task_status)
 
         return json_response(
-            data=task_status, message="업무 체크 상태 조회 성공", status_code=200
+            data=serialized_task_status, message="업무 체크 상태 조회 성공", status_code=200
         )
+
+    except ValueError as e:
+        return error_json_response(str(e), status_code=400)
+
     except Exception as e:
-        logger.error("Error retrieving task status", exc_info=True)
+        logger.error("업무 체크 상태 조회 중 오류 발생", exc_info=True)
         return error_json_response("업무 체크 상태 조회 실패", status_code=500)
 
 
@@ -70,12 +65,7 @@ def get_overall_task_status():
         description: 체크율 조회 실패
     """
     try:
-        session = get_db_session()
-
-        # Service를 통한 데이터 조회
-        task_status = AdminService.get_overall_task_status(session)
-
-        session.close()
+        task_status = AdminService.get_overall_task_status()
 
         return json_response(
             data=task_status, message="전체 업무 체크 상태 조회 성공", status_code=200
@@ -101,15 +91,11 @@ def get_combined_task_status():
         description: 체크 상태 조회 실패
     """
     try:
-        session = get_db_session()
-
-        # Service를 통한 데이터 조회
-        task_status = AdminService.get_combined_task_status(session)
-
-        session.close()
+        task_status = AdminService.get_combined_task_status()
+        serialized_task_status = AdminSerializer.serialize_task_status(task_status)
 
         return json_response(
-            data=task_status, message="통합 업무 체크 상태 조회 성공", status_code=200
+            data=serialized_task_status, message="통합 업무 체크 상태 조회 성공", status_code=200
         )
     except Exception as e:
         logger.error("Error retrieving combined task status", exc_info=True)

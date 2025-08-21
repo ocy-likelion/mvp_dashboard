@@ -1,6 +1,5 @@
 from flask import Blueprint, request
 import logging
-from app.models.db import get_db_session
 
 from app.serializers import (
     TrainingSerializer,
@@ -30,12 +29,7 @@ def get_training_courses():
         description: 훈련과정 목록 불러오기 실패
     """
     try:
-        session = get_db_session()
-
-        # Service를 사용한 훈련 과정 목록 조회
-        course_names = TrainingService.get_active_training_courses(session)
-
-        session.close()
+        course_names = TrainingService.get_active_training_courses()
 
         return json_response(
             data=course_names, message="훈련 과정 목록 조회 성공", status_code=200
@@ -96,24 +90,10 @@ def save_training_info():
         description: 훈련 과정 저장 실패
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = TrainingSerializer.deserialize_training_info_create(data)
-            # Service를 사용한 훈련 과정 정보 저장
-            TrainingService.create_training_info(session, validated_data)
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"훈련 과정 저장 중 오류: {str(e)}")
-            return error_json_response("훈련 과정 저장 실패", status_code=500)
-        finally:
-            session.close()
+        validated_data = TrainingSerializer.deserialize_training_info_create(
+            request.json
+        )
+        TrainingService.create_training_info(validated_data)
 
         return json_response(
             data=None, message="훈련 과정이 저장되었습니다!", status_code=201
@@ -137,15 +117,13 @@ def get_training_info():
         description: 훈련 과정 목록 조회 실패
     """
     try:
-        session = get_db_session()
-
-        # Service를 사용한 훈련 과정 목록 조회
-        courses_data = TrainingService.get_all_training_info(session)
-
-        session.close()
+        courses_data = TrainingService.get_all_training_info()
+        serialized_courses_data = TrainingSerializer.serialize_training_info(
+            courses_data
+        )
 
         return json_response(
-            data=courses_data, message="훈련 과정 목록 조회 성공", status_code=200
+            data=serialized_courses_data, message="훈련 과정 목록 조회 성공", status_code=200
         )
 
     except Exception as e:
@@ -167,15 +145,13 @@ def get_unchecked_descriptions():
         description: 미체크 항목 목록 조회 실패
     """
     try:
-        session = get_db_session()
-
-        # Service를 사용한 미체크 항목 목록 조회
-        unchecked_items = UncheckedService.get_unchecked_descriptions(session)
-
-        session.close()
-
+        unchecked_items = UncheckedService.get_unchecked_descriptions()
+        serialized_unchecked_items = UncheckedSerializer.serialize_unchecked_descriptions(unchecked_items)
+        
         return json_response(
-            data=unchecked_items, message="미체크 항목 목록 조회 성공", status_code=200
+            data=serialized_unchecked_items,
+            message="미체크 항목 목록 조회 성공",
+            status_code=200,
         )
 
     except Exception as e:
@@ -217,26 +193,10 @@ def save_unchecked_description():
         description: 서버 오류 발생
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = (
-                UncheckedSerializer.deserialize_unchecked_description_create(data)
-            )
-            # Service를 사용한 미체크 항목 저장
-            UncheckedService.create_unchecked_description(session, validated_data)
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"미체크 항목 저장 중 오류: {str(e)}")
-            return error_json_response("미체크 항목 저장 실패", status_code=500)
-        finally:
-            session.close()
+        validated_data = UncheckedSerializer.deserialize_unchecked_description_create(
+            request.json
+        )
+        UncheckedService.create_unchecked_description(validated_data)
 
         return json_response(
             data=None,
@@ -280,26 +240,10 @@ def add_unchecked_comment():
         description: 서버 오류 발생
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = UncheckedSerializer.deserialize_unchecked_comment_create(
-                data
-            )
-            # Service를 사용한 댓글 추가
-            UncheckedService.add_unchecked_comment(session, validated_data)
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"댓글 저장 중 오류: {str(e)}")
-            return error_json_response("댓글 저장 실패", status_code=500)
-        finally:
-            session.close()
+        validated_data = UncheckedSerializer.deserialize_unchecked_comment_create(
+            request.json
+        )
+        UncheckedService.add_unchecked_comment(validated_data)
 
         return json_response(
             data=None, message="댓글이 저장되었습니다.", status_code=201
@@ -337,24 +281,8 @@ def resolve_unchecked_description():
         description: 서버 오류 발생
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = UncheckedSerializer.deserialize_unchecked_resolve(data)
-            # Service를 사용한 미체크 항목 해결
-            UncheckedService.resolve_unchecked_description(session, validated_data)
-            session.commit()
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"미체크 항목 해결 중 오류: {str(e)}")
-            return error_json_response("미체크 항목 해결 실패", status_code=500)
-        finally:
-            session.close()
+        validated_data = UncheckedSerializer.deserialize_unchecked_resolve(request.json)
+        UncheckedService.resolve_unchecked_description(validated_data)
 
         return json_response(
             data=None, message="미체크 항목이 해결되었습니다.", status_code=200
@@ -386,24 +314,13 @@ def get_unchecked_comments():
         description: "댓글 조회 실패"
     """
     try:
-        unchecked_id = request.args.get("unchecked_id")
+        validated_data = UncheckedSerializer.deserialize_unchecked_comment_get(request.args)
+        comments = UncheckedService.get_unchecked_comments(validated_data)
+        serialized_comments = UncheckedSerializer.serialize_unchecked_comments(comments)
 
-        if not unchecked_id:
-            return error_json_response("미체크 항목 ID를 입력하세요.", status_code=400)
-
-        session = get_db_session()
-        try:
-            # Service를 사용한 댓글 조회
-            comments = UncheckedService.get_unchecked_comments(
-                session, int(unchecked_id)
-            )
-
-            return json_response(
-                data=comments, message="미체크 항목 댓글 조회 성공", status_code=200
-            )
-
-        finally:
-            session.close()
+        return json_response(
+            data=serialized_comments, message="미체크 항목 댓글 조회 성공", status_code=200
+        )
 
     except Exception as e:
         logger.error("Error retrieving unchecked comments", exc_info=True)

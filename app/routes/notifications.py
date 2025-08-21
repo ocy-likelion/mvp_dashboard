@@ -1,5 +1,4 @@
 from flask import Blueprint, request
-from app.models.db import get_db_session
 from app.utils.notifications import SlackNotifier
 import logging
 
@@ -42,33 +41,20 @@ def get_unread_count():
         # 쿼리 파라미터를 딕셔너리로 변환
         query_data = {"username": request.args.get("username")}
 
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = NotificationSerializer.deserialize_notification_query(
-                query_data
-            )
-            # Service를 사용한 미확인 알림 개수 조회
-            unread_counts = NotificationService.get_unread_count(
-                session, validated_data
-            )
-            # 마지막 확인 시간 업데이트
-            validated_data["check_type"] = "all"
-            NotificationService.update_last_check_time(session, validated_data)
-            session.commit()
+        # 데이터 검증
+        validated_data = NotificationSerializer.deserialize_notification_query(
+            query_data
+        )
+        # Service를 사용한 미확인 알림 개수 조회 및 마지막 확인 시간 업데이트
+        validated_data["check_type"] = "all"
+        unread_counts = NotificationService.get_unread_count(validated_data)
+        NotificationService.update_last_check_time(validated_data)
 
-            return json_response(
-                data=unread_counts,
-                message="미확인 알림 개수 조회 성공",
-                status_code=200,
-            )
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"알림 개수 조회 중 오류: {str(e)}")
-            return error_json_response("알림 개수 조회 실패", status_code=500)
-        finally:
-            session.close()
+        return json_response(
+            data=unread_counts,
+            message="미확인 알림 개수 조회 성공",
+            status_code=200,
+        )
 
     except Exception as e:
         logger.error("알림 개수 조회 오류", exc_info=True)

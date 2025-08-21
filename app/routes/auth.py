@@ -1,7 +1,5 @@
 from flask import Blueprint, request, session
 import logging
-from app.models.db import get_db_session
-
 
 from app.serializers import (
     UserSerializer,
@@ -47,26 +45,16 @@ def login():
       500:
         description: 서버 오류
     """
-    data = request.json
-    if not data:
-        return error_json_response("요청 데이터가 없습니다.", status_code=400)
-
     try:
-        session_db = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = UserSerializer.deserialize_user_login(data)
-            # Service를 사용한 로그인 처리
-            user_data = UserService.login(session_db, validated_data)
-
-        finally:
-            session_db.close()
+        validated_data = UserSerializer.deserialize_user_login(request.json)
+        user = UserService.login(validated_data)
+        serialized_user = UserSerializer.serialize_user(user)
 
         session.permanent = True  # 세션을 영구적으로 설정
-        session["user"] = user_data
+        session["user"] = serialized_user
 
         return json_response(
-            data={"user": user_data}, message="로그인 성공!", status_code=200
+            data=serialized_user, message="로그인 성공!", status_code=200
         )
 
     except Exception as e:
@@ -146,26 +134,14 @@ def change_password():
         description: 서버 오류 발생
     """
     try:
-        data = request.json
-        if not data:
-            return error_json_response("요청 데이터가 없습니다.", status_code=400)
+        validated_data = UserSerializer.deserialize_password_change(request.json)
+        UserService.change_password(validated_data)
 
-        session = get_db_session()
-        try:
-            # 데이터 검증
-            validated_data = UserSerializer.deserialize_password_change(data)
-            # Service를 사용한 비밀번호 변경
-            UserService.change_password(session, validated_data)
-            session.commit()
-
-            return json_response(
-                data=None,
-                message="비밀번호가 성공적으로 변경되었습니다.",
-                status_code=200,
-            )
-
-        finally:
-            session.close()
+        return json_response(
+            data=None,
+            message="비밀번호가 성공적으로 변경되었습니다.",
+            status_code=200,
+        )
 
     except Exception as e:
         logger.error("비밀번호 변경 오류", exc_info=True)
