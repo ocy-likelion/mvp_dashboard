@@ -133,22 +133,119 @@ class AttendanceService(BaseService):
 
     @staticmethod
     def get_attendance_records(limit: int = None) -> List[Attendance]:
-        """출퇴근 기록 조회"""
+        """출퇴근 기록 조회 (기존 메서드 - 하위 호환성 유지)"""
+        return AttendanceService.get_attendance_records_paginated({}, limit)["items"]
+
+    @staticmethod
+    def get_attendance_records_paginated(filters: Dict, limit: int = None) -> Dict:
+        """페이지네이션을 포함한 출퇴근 기록 조회"""
         import logging
+        from datetime import datetime
         logger = logging.getLogger(__name__)
         
         try:
             with db_session_read_only() as session:
-                query = session.query(Attendance).order_by(Attendance.date.desc())
+                query = session.query(Attendance)
 
+                # 월별 필터 적용
+                if filters.get("year") and filters.get("month"):
+                    year = filters["year"]
+                    month = filters["month"]
+                    # 해당 월의 시작일과 종료일 계산
+                    start_date = datetime(year, month, 1).date()
+                    if month == 12:
+                        end_date = datetime(year + 1, 1, 1).date()
+                    else:
+                        end_date = datetime(year, month + 1, 1).date()
+                    
+                    query = query.filter(
+                        Attendance.date >= start_date,
+                        Attendance.date < end_date
+                    )
+                elif filters.get("year"):
+                    # 년도만 지정된 경우
+                    year = filters["year"]
+                    start_date = datetime(year, 1, 1).date()
+                    end_date = datetime(year + 1, 1, 1).date()
+                    query = query.filter(
+                        Attendance.date >= start_date,
+                        Attendance.date < end_date
+                    )
+
+                # 강사 필터
+                if filters.get("instructor"):
+                    query = query.filter(Attendance.instructor == filters["instructor"])
+
+                # 훈련 과정 필터
+                if filters.get("training_course"):
+                    query = query.filter(Attendance.training_course == filters["training_course"])
+
+                # 검색 필터
+                if filters.get("search"):
+                    search_term = f"%{filters['search']}%"
+                    query = query.filter(
+                        (Attendance.instructor_name.contains(search_term)) |
+                        (Attendance.training_course.contains(search_term))
+                    )
+
+                # 전체 개수 조회
+                total_count = query.count()
+                
+                # 정렬 (최신 날짜순)
+                query = query.order_by(Attendance.date.desc())
+                
+                # limit 파라미터가 있으면 페이지네이션 대신 limit 적용
                 if limit:
-                    query = query.limit(limit)
+                    records = query.limit(limit).all()
+                    return {
+                        "items": records,
+                        "pagination": {
+                            "page": 1,
+                            "per_page": limit,
+                            "total_count": total_count,
+                            "total_pages": 1,
+                            "has_next": False,
+                            "has_prev": False
+                        }
+                    }
+                
+                # 페이지네이션 적용
+                page = filters.get("page", 1)
+                per_page = filters.get("per_page", 10)
+                offset = (page - 1) * per_page
+                
+                records = query.offset(offset).limit(per_page).all()
 
-                return query.all()
+                # 페이지네이션 정보 계산
+                total_pages = (total_count + per_page - 1) // per_page
+                has_next = page < total_pages
+                has_prev = page > 1
+
+                return {
+                    "items": records,
+                    "pagination": {
+                        "page": page,
+                        "per_page": per_page,
+                        "total_count": total_count,
+                        "total_pages": total_pages,
+                        "has_next": has_next,
+                        "has_prev": has_prev
+                    }
+                }
         except Exception as e:
-            logger.error(f"Error in get_attendance_records: {str(e)}", exc_info=True)
-            # 오류 발생 시 빈 리스트 반환
-            return []
+            logger.error(f"Error in get_attendance_records_paginated: {str(e)}", exc_info=True)
+            # 오류 발생 시 빈 결과 반환
+            return {
+                "items": [],
+                "pagination": {
+                    "page": filters.get("page", 1),
+                    "per_page": filters.get("per_page", 10),
+                    "total_count": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_prev": False
+                }
+            }
 
     @staticmethod
     def calculate_work_hours(check_in_time: time, check_out_time: time) -> float:

@@ -48,7 +48,12 @@ class NoticeService(BaseService):
 
     @staticmethod
     def get_notices(include_deleted: bool = False) -> List[Dict]:
-        """공지사항 조회"""
+        """공지사항 조회 (기존 메서드 - 하위 호환성 유지)"""
+        return NoticeService.get_notices_paginated({}, include_deleted)["items"]
+
+    @staticmethod
+    def get_notices_paginated(filters: Dict, include_deleted: bool = False) -> Dict:
+        """페이지네이션을 포함한 공지사항 조회"""
         import logging
         logger = logging.getLogger(__name__)
         
@@ -59,7 +64,26 @@ class NoticeService(BaseService):
                 if not include_deleted:
                     query = query.filter(Notice.is_deleted == False)
 
-                notices = query.order_by(Notice.date.desc()).all()
+                # 필터 적용
+                if filters.get("type"):
+                    query = query.filter(Notice.type == filters["type"])
+                
+                if filters.get("search"):
+                    search_term = f"%{filters['search']}%"
+                    query = query.filter(
+                        (Notice.title.contains(search_term)) |
+                        (Notice.content.contains(search_term))
+                    )
+
+                # 전체 개수 조회
+                total_count = query.count()
+                
+                # 페이지네이션 적용
+                page = filters.get("page", 1)
+                per_page = filters.get("per_page", 10)
+                offset = (page - 1) * per_page
+                
+                notices = query.order_by(Notice.date.desc()).offset(offset).limit(per_page).all()
 
                 notices_data = []
                 for notice in notices:
@@ -75,11 +99,36 @@ class NoticeService(BaseService):
                     }
                     notices_data.append(notice_dict)
 
-                return notices_data
+                # 페이지네이션 정보 계산
+                total_pages = (total_count + per_page - 1) // per_page
+                has_next = page < total_pages
+                has_prev = page > 1
+
+                return {
+                    "items": notices_data,
+                    "pagination": {
+                        "page": page,
+                        "per_page": per_page,
+                        "total_count": total_count,
+                        "total_pages": total_pages,
+                        "has_next": has_next,
+                        "has_prev": has_prev
+                    }
+                }
         except Exception as e:
-            logger.error(f"Error in get_notices: {str(e)}", exc_info=True)
-            # 오류 발생 시 빈 리스트 반환
-            return []
+            logger.error(f"Error in get_notices_paginated: {str(e)}", exc_info=True)
+            # 오류 발생 시 빈 결과 반환
+            return {
+                "items": [],
+                "pagination": {
+                    "page": filters.get("page", 1),
+                    "per_page": filters.get("per_page", 10),
+                    "total_count": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_prev": False
+                }
+            }
 
     @staticmethod
     def update_notice(notice_id: int, validated_data: Dict) -> Notice:

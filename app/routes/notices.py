@@ -182,19 +182,33 @@ def add_notice():
 
 
 @notices_bp.route("/notices", methods=["GET"])
+@handle_serialization_errors
 def get_notices():
     """
-    공지사항 조회 API
+    공지사항 조회 API (페이지네이션 지원)
     ---
     tags:
       - Notices
-    summary: 모든 공지사항 목록 조회
+    summary: 공지사항 목록 조회 (페이지네이션 지원)
     description: |
-      등록된 모든 공지사항을 조회합니다.
+      등록된 공지사항을 페이지네이션을 통해 조회합니다.
       
       ### 사용 예시
       ```javascript
+      // 기본 조회 (1페이지, 10개씩)
       const response = await fetch('/notices', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      // 페이지네이션 적용
+      const response = await fetch('/notices?page=2&per_page=5', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      // 필터링 적용
+      const response = await fetch('/notices?type=공지사항&search=회의', {
         method: 'GET',
         credentials: 'include'
       });
@@ -202,45 +216,36 @@ def get_notices():
       const result = await response.json();
       console.log(result);
       ```
+    parameters:
+      - name: page
+        in: query
+        type: integer
+        required: false
+        description: 페이지 번호 (기본값: 1)
+        example: 1
+      - name: per_page
+        in: query
+        type: integer
+        required: false
+        description: 페이지당 항목 수 (기본값: 10, 최대: 100)
+        example: 10
+      - name: type
+        in: query
+        type: string
+        required: false
+        description: 공지사항 유형 필터
+        example: "공지사항"
+      - name: search
+        in: query
+        type: string
+        required: false
+        description: 제목 또는 내용 검색
+        example: "회의"
     responses:
       200:
-        description: 모든 공지사항 데이터를 포함한 응답
+        description: 공지사항 목록과 페이지네이션 정보를 포함한 응답
         schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: true
-            error:
-              type: string
-              example: "공지사항 조회 성공"
-            data:
-              type: array
-              items:
-                type: object
-                properties:
-                  id:
-                    type: integer
-                    example: 1
-                  title:
-                    type: string
-                    example: "중요 공지사항"
-                  content:
-                    type: string
-                    example: "내일 오후 2시에 전체 회의가 있습니다."
-                  created_by:
-                    type: string
-                    example: "관리자"
-                  type:
-                    type: string
-                    example: "공지사항"
-                  created_at:
-                    type: string
-                    format: date-time
-                    example: "2025-01-15T10:30:00"
-            status_code:
-              type: integer
-              example: 200
+          $ref: '#/definitions/PaginatedResponseSchema'
         examples:
           application/json:
             summary: 공지사항 목록 조회 성공 응답
@@ -248,19 +253,41 @@ def get_notices():
               success: true
               error: "공지사항 조회 성공"
               data:
-                - id: 1
-                  title: "중요 공지사항"
-                  content: "내일 오후 2시에 전체 회의가 있습니다."
-                  created_by: "관리자"
-                  type: "공지사항"
-                  created_at: "2025-01-15T10:30:00"
-                - id: 2
-                  title: "시스템 점검 안내"
-                  content: "오늘 밤 12시부터 2시간 동안 시스템 점검이 있습니다."
-                  created_by: "시스템관리자"
-                  type: "안내"
-                  created_at: "2025-01-14T15:20:00"
+                items:
+                  - id: 1
+                    title: "중요 공지사항"
+                    content: "내일 오후 2시에 전체 회의가 있습니다."
+                    created_by: "관리자"
+                    type: "공지사항"
+                    date: "2025-01-15T10:30:00"
+                  - id: 2
+                    title: "시스템 점검 안내"
+                    content: "오늘 밤 12시부터 2시간 동안 시스템 점검이 있습니다."
+                    created_by: "시스템관리자"
+                    type: "안내"
+                    date: "2025-01-14T15:20:00"
+                pagination:
+                  page: 1
+                  per_page: 10
+                  total_count: 25
+                  total_pages: 3
+                  has_next: true
+                  has_prev: false
               status_code: 200
+      400:
+        description: 잘못된 파라미터
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "잘못된 페이지 번호입니다."
+            status_code:
+              type: integer
+              example: 400
       500:
         description: 공지사항을 불러오는 데 실패함
         schema:
@@ -277,10 +304,14 @@ def get_notices():
               example: 500
     """
     try:
-        notices_data = NoticeService.get_notices()
-        # 서비스에서 이미 딕셔너리 형태로 반환되므로 직렬화 불필요
+        # 쿼리 파라미터 검증 및 변환
+        validated_filters = NoticeSerializer.deserialize_notice_list_get(request.args)
+        
+        # 페이지네이션을 포함한 공지사항 조회
+        result = NoticeService.get_notices_paginated(validated_filters)
+        
         return json_response(
-            data=notices_data, message="공지사항 조회 성공", status_code=200
+            data=result, message="공지사항 조회 성공", status_code=200
         )
     except Exception as e:
         logger.error("Error retrieving notices", exc_info=True)

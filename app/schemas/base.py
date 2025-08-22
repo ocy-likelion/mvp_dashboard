@@ -10,21 +10,30 @@ from marshmallow import Schema, fields, validates, ValidationError
 class PaginationSchema(Schema):
     """페이지네이션 정보 스키마"""
 
-    page = fields.Int()
-    per_page = fields.Int()
-    total = fields.Int()
-    pages = fields.Int()
-    has_prev = fields.Bool()
-    has_next = fields.Bool()
+    page = fields.Int(description="현재 페이지 번호")
+    per_page = fields.Int(description="페이지당 항목 수")
+    total_count = fields.Int(description="전체 항목 수")
+    total_pages = fields.Int(description="전체 페이지 수")
+    has_prev = fields.Bool(description="이전 페이지 존재 여부")
+    has_next = fields.Bool(description="다음 페이지 존재 여부")
 
 
 class ResponseSchema(Schema):
     """API 응답 래퍼 스키마"""
 
-    success = fields.Bool()
-    message = fields.Str()
-    data = fields.Raw()
-    pagination = fields.Nested(PaginationSchema)
+    success = fields.Bool(description="요청 성공 여부")
+    message = fields.Str(description="응답 메시지")
+    data = fields.Raw(description="응답 데이터")
+    status_code = fields.Int(description="HTTP 상태 코드")
+
+
+class PaginatedResponseSchema(Schema):
+    """페이지네이션 응답 스키마"""
+
+    success = fields.Bool(description="요청 성공 여부")
+    message = fields.Str(description="응답 메시지")
+    data = fields.Dict(description="페이지네이션 데이터", keys=fields.Str(), values=fields.Raw())
+    status_code = fields.Int(description="HTTP 상태 코드")
 
 
 class ErrorSchema(Schema):
@@ -81,6 +90,7 @@ class NotificationQuerySchema(Schema):
 # ============================================================================
 
 response_schema = ResponseSchema()
+paginated_response_schema = PaginatedResponseSchema()
 error_schema = ErrorSchema()
 pagination_schema = PaginationSchema()
 date_filter_schema = DateFilterSchema()

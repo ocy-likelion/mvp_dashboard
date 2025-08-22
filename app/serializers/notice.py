@@ -9,6 +9,7 @@ from app.schemas import (
     notice_update_schema,
     notice_read_create_schema,
     notice_read_filter_schema,
+    notice_list_filter_schema,
 )
 
 
@@ -39,6 +40,11 @@ class NoticeSerializer:
     def deserialize_notice_read_get(query_params: Dict) -> Dict:
         """공지사항 읽음 목록 조회 쿼리 파라미터 검증 및 변환"""
         return Serializer.deserialize(query_params, notice_read_filter_schema)
+
+    @staticmethod
+    def deserialize_notice_list_get(query_params: Dict) -> Dict:
+        """공지사항 목록 조회 쿼리 파라미터 검증 및 변환"""
+        return Serializer.deserialize(query_params, notice_list_filter_schema)
 
     @staticmethod
     def deserialize_notice_create(data: Dict) -> Dict:

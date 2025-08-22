@@ -14,32 +14,45 @@ logger = logging.getLogger(__name__)
 
 
 @attendance_bp.route("/attendance", methods=["GET"])
+@handle_serialization_errors
 def get_attendance():
     """
-    출퇴근 기록 조회 API
+    출퇴근 기록 조회 API (월별 필터링 및 페이지네이션 지원)
     ---
     tags:
       - Attendance
-    summary: 출퇴근 기록 조회 및 파일 다운로드
+    summary: 출퇴근 기록 조회 및 파일 다운로드 (월별 필터링 및 페이지네이션 지원)
     description: |
-      출퇴근 기록을 조회하거나 파일로 다운로드합니다.
+      출퇴근 기록을 월별로 필터링하고 페이지네이션을 통해 조회하거나 파일로 다운로드합니다.
       
       ### 사용 예시
       ```javascript
-      // JSON 형태로 조회
+      // 기본 조회 (최신 10개)
       const response = await fetch('/attendance', {
         method: 'GET',
         credentials: 'include'
       });
       
-      // Excel 파일로 다운로드
-      const response = await fetch('/attendance?format=excel', {
+      // 특정 월 조회
+      const response = await fetch('/attendance?year=2025&month=1', {
         method: 'GET',
         credentials: 'include'
       });
       
-      // 특정 개수만 조회
-      const response = await fetch('/attendance?limit=10', {
+      // 페이지네이션 적용
+      const response = await fetch('/attendance?year=2025&month=1&page=2&per_page=5', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      // 강사별 필터링
+      const response = await fetch('/attendance?instructor=1', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      // Excel 파일로 다운로드
+      const response = await fetch('/attendance?format=excel&year=2025&month=1', {
         method: 'GET',
         credentials: 'include'
       });
@@ -48,63 +61,65 @@ def get_attendance():
       console.log(result);
       ```
     parameters:
+      - name: page
+        in: query
+        type: integer
+        required: false
+        description: 페이지 번호 (기본값: 1)
+        example: 1
+      - name: per_page
+        in: query
+        type: integer
+        required: false
+        description: 페이지당 항목 수 (기본값: 10, 최대: 100)
+        example: 10
+      - name: year
+        in: query
+        type: integer
+        required: false
+        description: 조회할 년도
+        example: 2025
+      - name: month
+        in: query
+        type: integer
+        required: false
+        description: 조회할 월 (1-12)
+        example: 1
+      - name: instructor
+        in: query
+        type: string
+        required: false
+        description: 강사 ID 필터
+        example: "1"
+      - name: training_course
+        in: query
+        type: string
+        required: false
+        description: 훈련 과정명 필터
+        example: "데이터 분석 스쿨 4기"
+      - name: search
+        in: query
+        type: string
+        required: false
+        description: 강사명 또는 훈련과정명 검색
+        example: "홍길동"
       - name: format
         in: query
         type: string
         required: false
-        description: "csv 또는 excel 형식으로 다운로드 (기본값 JSON 반환)"
+        description: "excel 형식으로 다운로드 (기본값 JSON 반환)"
         example: "excel"
       - name: limit
         in: query
         type: integer
         required: false
-        description: "조회할 레코드 개수 제한"
+        description: "조회할 레코드 개수 제한 (페이지네이션 무시)"
         example: 10
     responses:
       200:
-        description: 출퇴근 기록 데이터 반환 또는 파일 다운로드
+        description: 출퇴근 기록 데이터와 페이지네이션 정보 반환 또는 파일 다운로드
         schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: true
-            error:
-              type: string
-              example: "출퇴근 기록 조회 성공"
-            data:
-              type: array
-              items:
-                type: object
-                properties:
-                  id:
-                    type: integer
-                    example: 1
-                  date:
-                    type: string
-                    format: date
-                    example: "2025-01-15"
-                  instructor:
-                    type: string
-                    example: "1"
-                  instructor_name:
-                    type: string
-                    example: "홍길동"
-                  training_course:
-                    type: string
-                    example: "데이터 분석 스쿨 4기"
-                  check_in_time:
-                    type: string
-                    example: "09:00"
-                  check_out_time:
-                    type: string
-                    example: "18:00"
-                  daily_log:
-                    type: boolean
-                    example: true
-            status_code:
-              type: integer
-              example: 200
+          $ref: '#/definitions/PaginatedResponseSchema'
         examples:
           application/json:
             summary: 출퇴근 기록 조회 성공 응답
@@ -112,22 +127,30 @@ def get_attendance():
               success: true
               error: "출퇴근 기록 조회 성공"
               data:
-                - id: 1
-                  date: "2025-01-15"
-                  instructor: "1"
-                  instructor_name: "홍길동"
-                  training_course: "데이터 분석 스쿨 4기"
-                  check_in_time: "09:00"
-                  check_out_time: "18:00"
-                  daily_log: true
-                - id: 2
-                  date: "2025-01-14"
-                  instructor: "2"
-                  instructor_name: "김철수"
-                  training_course: "데이터 분석 스쿨 4기"
-                  check_in_time: "08:30"
-                  check_out_time: "17:30"
-                  daily_log: false
+                items:
+                  - id: 1
+                    date: "2025-01-15"
+                    instructor: "1"
+                    instructor_name: "홍길동"
+                    training_course: "데이터 분석 스쿨 4기"
+                    check_in_time: "09:00"
+                    check_out_time: "18:00"
+                    daily_log: true
+                  - id: 2
+                    date: "2025-01-14"
+                    instructor: "2"
+                    instructor_name: "김철수"
+                    training_course: "데이터 분석 스쿨 4기"
+                    check_in_time: "08:30"
+                    check_out_time: "17:30"
+                    daily_log: false
+                pagination:
+                  page: 1
+                  per_page: 10
+                  total_count: 25
+                  total_pages: 3
+                  has_next: true
+                  has_prev: false
               status_code: 200
         headers:
           Content-Disposition:
@@ -141,7 +164,7 @@ def get_attendance():
               type: string
               example: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       400:
-        description: 잘못된 포맷 요청
+        description: 잘못된 파라미터
         schema:
           type: object
           properties:
@@ -150,7 +173,7 @@ def get_attendance():
               example: false
             error:
               type: string
-              example: "잘못된 포맷 요청"
+              example: "잘못된 월 값입니다."
             status_code:
               type: integer
               example: 400
@@ -171,7 +194,11 @@ def get_attendance():
     """
     try:
         format_type = request.args.get("format", "json")  # 기본값 JSON
-        # 간단한 파라미터 처리 (직렬화 오류 방지)
+        
+        # 쿼리 파라미터 검증 및 변환
+        validated_filters = AttendanceSerializer.deserialize_attendance_list_get(request.args)
+        
+        # limit 파라미터 처리 (직렬화 오류 방지)
         limit = request.args.get("limit")
         if limit:
             try:
@@ -179,11 +206,12 @@ def get_attendance():
             except ValueError:
                 limit = None
         
-        attendance_records = AttendanceService.get_attendance_records(limit)
+        # 페이지네이션을 포함한 출퇴근 기록 조회
+        result = AttendanceService.get_attendance_records_paginated(validated_filters, limit)
         
         # 딕셔너리 형태로 변환
         records_data = []
-        for record in attendance_records:
+        for record in result["items"]:
             record_dict = {
                 "id": record.id,
                 "date": record.date.strftime("%Y-%m-%d"),
@@ -198,8 +226,12 @@ def get_attendance():
 
         # JSON 응답 (기본값)
         if format_type == "json":
+            response_data = {
+                "items": records_data,
+                "pagination": result["pagination"]
+            }
             return json_response(
-                data=records_data,
+                data=response_data,
                 message="출퇴근 기록 조회 성공",
                 status_code=200,
             )

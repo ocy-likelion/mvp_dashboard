@@ -60,6 +60,23 @@ class AttendanceTimeSchema(Schema):
                 raise ValidationError("퇴근 시간은 HH:MM 형식이어야 합니다.")
 
 
+class AttendanceListFilterSchema(Schema):
+    """출퇴근 기록 목록 조회 필터 검증용 스키마"""
+
+    page = fields.Int(missing=1, validate=lambda x: x > 0)
+    per_page = fields.Int(missing=10, validate=lambda x: 1 <= x <= 100)
+    year = fields.Int()
+    month = fields.Int(validate=lambda x: 1 <= x <= 12)
+    instructor = fields.Str()
+    training_course = fields.Str()
+    search = fields.Str()
+
+    @validates("month")
+    def validate_month(self, value):
+        if value and (value < 1 or value > 12):
+            raise ValidationError("월은 1부터 12 사이의 값이어야 합니다.")
+
+
 # ============================================================================
 # 스키마 인스턴스 생성
 # ============================================================================
@@ -68,3 +85,4 @@ attendance_schema = AttendanceSchema()
 attendances_schema = AttendanceSchema(many=True)
 attendance_create_schema = AttendanceCreateSchema()
 attendance_time_schema = AttendanceTimeSchema()
+attendance_list_filter_schema = AttendanceListFilterSchema()

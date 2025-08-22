@@ -86,6 +86,15 @@ class NoticeReadFilterSchema(Schema):
     )
 
 
+class NoticeListFilterSchema(Schema):
+    """공지사항 목록 조회 필터 검증용 스키마"""
+
+    page = fields.Int(missing=1, validate=lambda x: x > 0)
+    per_page = fields.Int(missing=10, validate=lambda x: 1 <= x <= 100)
+    type = fields.Str()
+    search = fields.Str()
+
+
 # ============================================================================
 # 스키마 인스턴스 생성
 # ============================================================================
@@ -99,3 +108,4 @@ notice_update_schema = NoticeUpdateSchema()
 notice_read_create_schema = NoticeReadCreateSchema()
 notice_delete_schema = NoticeDeleteSchema()
 notice_read_filter_schema = NoticeReadFilterSchema()
+notice_list_filter_schema = NoticeListFilterSchema()
