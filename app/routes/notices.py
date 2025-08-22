@@ -221,25 +221,25 @@ def get_notices():
         in: query
         type: integer
         required: false
-        description: 페이지 번호 (기본값: 1)
+        description: "페이지 번호 (기본값: 1)"
         example: 1
       - name: per_page
         in: query
         type: integer
         required: false
-        description: 페이지당 항목 수 (기본값: 10, 최대: 100)
+        description: "페이지당 항목 수 (기본값: 10, 최대: 100)"
         example: 10
       - name: type
         in: query
         type: string
         required: false
-        description: 공지사항 유형 필터
+        description: "공지사항 유형 필터"
         example: "공지사항"
       - name: search
         in: query
         type: string
         required: false
-        description: 제목 또는 내용 검색
+        description: "제목 또는 내용 검색"
         example: "회의"
     responses:
       200:

@@ -65,43 +65,43 @@ def get_attendance():
         in: query
         type: integer
         required: false
-        description: 페이지 번호 (기본값: 1)
+        description: "페이지 번호 (기본값: 1)"
         example: 1
       - name: per_page
         in: query
         type: integer
         required: false
-        description: 페이지당 항목 수 (기본값: 10, 최대: 100)
+        description: "페이지당 항목 수 (기본값: 10, 최대: 100)"
         example: 10
       - name: year
         in: query
         type: integer
         required: false
-        description: 조회할 년도
+        description: "조회할 년도"
         example: 2025
       - name: month
         in: query
         type: integer
         required: false
-        description: 조회할 월 (1-12)
+        description: "조회할 월 (1-12)"
         example: 1
       - name: instructor
         in: query
         type: string
         required: false
-        description: 강사 ID 필터
+        description: "강사 ID 필터"
         example: "1"
       - name: training_course
         in: query
         type: string
         required: false
-        description: 훈련 과정명 필터
+        description: "훈련 과정명 필터"
         example: "데이터 분석 스쿨 4기"
       - name: search
         in: query
         type: string
         required: false
-        description: 강사명 또는 훈련과정명 검색
+        description: "강사명 또는 훈련과정명 검색"
         example: "홍길동"
       - name: format
         in: query
