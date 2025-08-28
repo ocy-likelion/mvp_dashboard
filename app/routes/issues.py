@@ -84,7 +84,7 @@ def create_issue():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "이슈가 성공적으로 생성되었습니다."
             data:
@@ -113,15 +113,12 @@ def create_issue():
                 resolved:
                   type: boolean
                   example: false
-            status_code:
-              type: integer
-              example: 201
         examples:
           application/json:
             summary: 이슈 생성 성공 응답
             value:
               success: true
-              error: "이슈가 성공적으로 생성되었습니다."
+              message: "이슈가 성공적으로 생성되었습니다."
               data:
                 id: 1
                 content: "시스템 로그인이 안 되는 문제가 있습니다."
@@ -130,7 +127,6 @@ def create_issue():
                 date: "2025-01-15"
                 created_at: "2025-01-15T10:30:00"
                 resolved: false
-              status_code: 201
       400:
         description: 필수 필드 누락
         schema:
@@ -142,6 +138,9 @@ def create_issue():
             error:
               type: string
               example: "이슈 내용, 교육 과정, 작성자는 필수 입력 항목입니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -156,6 +155,9 @@ def create_issue():
             error:
               type: string
               example: "이슈 생성 중 오류가 발생했습니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -216,7 +218,7 @@ def get_issues():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "이슈 목록 조회 성공"
             data:
@@ -224,54 +226,86 @@ def get_issues():
               items:
                 type: object
                 properties:
-                  id:
-                    type: integer
-                    example: 1
-                  content:
-                    type: string
-                    example: "시스템 로그인이 안 되는 문제가 있습니다."
                   training_course:
                     type: string
                     example: "데이터 분석 스쿨 4기"
-                  username:
-                    type: string
-                    example: "홍길동"
-                  date:
-                    type: string
-                    format: date
-                    example: "2025-01-15"
-                  created_at:
-                    type: string
-                    format: date-time
-                    example: "2025-01-15T10:30:00"
-                  resolved:
-                    type: boolean
-                    example: false
-            status_code:
-              type: integer
-              example: 200
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        content:
+                          type: string
+                          example: "시스템 로그인이 안 되는 문제가 있습니다."
+                        training_course:
+                          type: string
+                          example: "데이터 분석 스쿨 4기"
+                        username:
+                          type: string
+                          example: "홍길동"
+                        date:
+                          type: string
+                          format: date
+                          example: "2025-01-15"
+                        created_at:
+                          type: string
+                          format: date-time
+                          example: "2025-01-15T10:30:00"
+                        resolved:
+                          type: boolean
+                          example: false
+                        comments:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                                example: 1
+                              comment:
+                                type: string
+                                example: "이 문제는 이미 확인했습니다."
+                              created_by:
+                                type: string
+                                example: "관리자"
+                              created_at:
+                                type: string
+                                format: date-time
+                                example: "2025-01-15T11:00:00"
         examples:
           application/json:
             summary: 이슈 목록 조회 성공 응답
             value:
               success: true
-              error: "이슈 목록 조회 성공"
+              message: "이슈 목록 조회 성공"
               data:
-                - id: 1
-                  content: "시스템 로그인이 안 되는 문제가 있습니다."
-                  training_course: "데이터 분석 스쿨 4기"
-                  username: "홍길동"
-                  date: "2025-01-15"
-                  created_at: "2025-01-15T10:30:00"
-                  resolved: false
-                - id: 2
-                  content: "과제 제출 시스템 오류"
-                  training_course: "데이터 분석 스쿨 4기"
-                  username: "김철수"
-                  date: "2025-01-14"
-                  created_at: "2025-01-14T15:20:00"
-                  resolved: false
-              status_code: 200
+                - training_course: "데이터 분석 스쿨 4기"
+                  issues:
+                    - id: 1
+                      content: "시스템 로그인이 안 되는 문제가 있습니다."
+                      training_course: "데이터 분석 스쿨 4기"
+                      username: "홍길동"
+                      date: "2025-01-15"
+                      created_at: "2025-01-15T10:30:00"
+                      resolved: false
+                      comments:
+                        - id: 1
+                          comment: "이 문제는 이미 확인했습니다."
+                          created_by: "관리자"
+                          created_at: "2025-01-15T11:00:00"
+                - training_course: "웹 개발 스쿨 3기"
+                  issues:
+                    - id: 2
+                      content: "과제 제출 시스템 오류"
+                      training_course: "웹 개발 스쿨 3기"
+                      username: "김철수"
+                      date: "2025-01-14"
+                      created_at: "2025-01-14T15:20:00"
+                      resolved: false
+                      comments: []
       500:
         description: 이슈 목록 조회 실패
         schema:
@@ -283,6 +317,9 @@ def get_issues():
             error:
               type: string
               example: "이슈 목록을 불러오는 중 오류 발생"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -363,7 +400,7 @@ def add_comment():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "댓글이 등록되었습니다."
             data:
@@ -385,22 +422,18 @@ def add_comment():
                   type: string
                   format: date-time
                   example: "2025-01-15T11:00:00"
-            status_code:
-              type: integer
-              example: 201
         examples:
           application/json:
             summary: 댓글 추가 성공 응답
             value:
               success: true
-              error: "댓글이 등록되었습니다."
+              message: "댓글이 등록되었습니다."
               data:
                 id: 1
                 issue_id: 1
                 comment: "이 문제는 이미 확인했습니다. 곧 해결하겠습니다."
                 created_by: "관리자"
                 created_at: "2025-01-15T11:00:00"
-              status_code: 201
       400:
         description: 필수 데이터 누락
         schema:
@@ -412,6 +445,9 @@ def add_comment():
             error:
               type: string
               example: "이슈 ID, 댓글 내용, 작성자는 필수 입력 항목입니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -426,6 +462,9 @@ def add_comment():
             error:
               type: string
               example: "해당 이슈를 찾을 수 없습니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 404
@@ -440,6 +479,9 @@ def add_comment():
             error:
               type: string
               example: "댓글 등록 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -500,7 +542,7 @@ def get_issue_comments():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "댓글 조회 성공"
             data:
@@ -524,15 +566,12 @@ def get_issue_comments():
                     type: string
                     format: date-time
                     example: "2025-01-15T11:00:00"
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 댓글 목록 조회 성공 응답
             value:
               success: true
-              error: "댓글 조회 성공"
+              message: "댓글 조회 성공"
               data:
                 - id: 1
                   issue_id: 1
@@ -544,7 +583,6 @@ def get_issue_comments():
                   comment: "해결되었습니다. 확인해보세요."
                   created_by: "시스템관리자"
                   created_at: "2025-01-15T14:30:00"
-              status_code: 200
       500:
         description: 댓글 조회 실패
         schema:
@@ -556,6 +594,9 @@ def get_issue_comments():
             error:
               type: string
               example: "댓글 조회 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -625,7 +666,7 @@ def resolve_issue():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "이슈가 해결되었습니다."
             data:
@@ -654,15 +695,12 @@ def resolve_issue():
                 resolved:
                   type: boolean
                   example: true
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 이슈 해결 성공 응답
             value:
               success: true
-              error: "이슈가 해결되었습니다."
+              message: "이슈가 해결되었습니다."
               data:
                 id: 1
                 content: "시스템 로그인이 안 되는 문제가 있습니다."
@@ -671,7 +709,6 @@ def resolve_issue():
                 date: "2025-01-15"
                 created_at: "2025-01-15T10:30:00"
                 resolved: true
-              status_code: 200
       400:
         description: 요청 데이터 오류
         schema:
@@ -683,6 +720,9 @@ def resolve_issue():
             error:
               type: string
               example: "이슈 ID를 입력해주세요."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -697,6 +737,9 @@ def resolve_issue():
             error:
               type: string
               example: "이슈 해결 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -769,6 +812,9 @@ def download_issues():
             error:
               type: string
               example: "이슈 다운로드 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
