@@ -119,13 +119,74 @@ def get_attendance():
       200:
         description: 출퇴근 기록 데이터와 페이지네이션 정보 반환 또는 파일 다운로드
         schema:
-          $ref: '#/definitions/PaginatedResponseSchema'
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "출퇴근 기록 조회 성공"
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      date:
+                        type: string
+                        format: date
+                        example: "2025-01-15"
+                      instructor:
+                        type: string
+                        example: "1"
+                      instructor_name:
+                        type: string
+                        example: "홍길동"
+                      training_course:
+                        type: string
+                        example: "데이터 분석 스쿨 4기"
+                      check_in_time:
+                        type: string
+                        example: "09:00"
+                      check_out_time:
+                        type: string
+                        example: "18:00"
+                      daily_log:
+                        type: boolean
+                        example: true
+                pagination:
+                  type: object
+                  properties:
+                    page:
+                      type: integer
+                      example: 1
+                    per_page:
+                      type: integer
+                      example: 10
+                    total_count:
+                      type: integer
+                      example: 25
+                    total_pages:
+                      type: integer
+                      example: 3
+                    has_next:
+                      type: boolean
+                      example: true
+                    has_prev:
+                      type: boolean
+                      example: false
         examples:
           application/json:
             summary: 출퇴근 기록 조회 성공 응답
             value:
               success: true
-              error: "출퇴근 기록 조회 성공"
+              message: "출퇴근 기록 조회 성공"
               data:
                 items:
                   - id: 1
@@ -151,7 +212,6 @@ def get_attendance():
                   total_pages: 3
                   has_next: true
                   has_prev: false
-              status_code: 200
         headers:
           Content-Disposition:
             description: 파일 다운로드 시 헤더
@@ -174,6 +234,9 @@ def get_attendance():
             error:
               type: string
               example: "잘못된 월 값입니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -188,6 +251,9 @@ def get_attendance():
             error:
               type: string
               example: "출퇴근 기록 조회 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -280,8 +346,8 @@ def save_attendance():
           instructor: '1',
           instructor_name: '홍길동',
           training_course: '데이터 분석 스쿨 4기',
-          check_in: '09:00',
-          check_out: '18:00',
+          check_in_time: '09:00',
+          check_out_time: '18:00',
           daily_log: true
         })
       });
@@ -300,8 +366,8 @@ def save_attendance():
             - instructor
             - instructor_name
             - training_course
-            - check_in
-            - check_out
+            - check_in_time
+            - check_out_time
           properties:
             date:
               type: string
@@ -320,11 +386,11 @@ def save_attendance():
               type: string
               description: 훈련 과정명
               example: "데이터 분석 스쿨 4기"
-            check_in:
+            check_in_time:
               type: string
               description: 출근 시간 (HH:MM 형식)
               example: "09:00"
-            check_out:
+            check_out_time:
               type: string
               description: 퇴근 시간 (HH:MM 형식)
               example: "18:00"
@@ -341,7 +407,7 @@ def save_attendance():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "출퇴근 기록 저장 성공!"
             data:
@@ -372,15 +438,12 @@ def save_attendance():
                 daily_log:
                   type: boolean
                   example: true
-            status_code:
-              type: integer
-              example: 201
         examples:
           application/json:
             summary: 출퇴근 기록 저장 성공 응답
             value:
               success: true
-              error: "출퇴근 기록 저장 성공!"
+              message: "출퇴근 기록 저장 성공!"
               data:
                 id: 1
                 date: "2025-01-15"
@@ -390,7 +453,6 @@ def save_attendance():
                 check_in_time: "09:00"
                 check_out_time: "18:00"
                 daily_log: true
-              status_code: 201
       400:
         description: 필수 데이터 누락
         schema:
@@ -402,6 +464,9 @@ def save_attendance():
             error:
               type: string
               example: "날짜, 강사 정보, 훈련 과정, 출퇴근 시간은 필수 입력 항목입니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -416,6 +481,9 @@ def save_attendance():
             error:
               type: string
               example: "출퇴근 기록 저장 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
