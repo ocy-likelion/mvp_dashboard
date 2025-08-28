@@ -53,36 +53,31 @@ def get_unread_count():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "미확인 알림 개수 조회 성공"
             data:
               type: object
               properties:
-                username:
-                  type: string
-                  example: "홍길동"
-                unread_count:
+                new_notices:
+                  type: integer
+                  example: 3
+                new_issues:
+                  type: integer
+                  example: 2
+                new_comments:
                   type: integer
                   example: 5
-                last_check_time:
-                  type: string
-                  format: date-time
-                  example: "2025-01-15T10:30:00"
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 미확인 알림 개수 조회 성공 응답
             value:
               success: true
-              error: "미확인 알림 개수 조회 성공"
+              message: "미확인 알림 개수 조회 성공"
               data:
-                username: "홍길동"
-                unread_count: 5
-                last_check_time: "2025-01-15T10:30:00"
-              status_code: 200
+                new_notices: 3
+                new_issues: 2
+                new_comments: 5
       400:
         description: 사용자명 누락
         schema:
@@ -94,6 +89,9 @@ def get_unread_count():
             error:
               type: string
               example: "사용자명을 입력해주세요."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -108,6 +106,9 @@ def get_unread_count():
             error:
               type: string
               example: "알림 개수 조회 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
