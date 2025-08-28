@@ -18,7 +18,7 @@ def get_task_status():
     ---
     tags:
       - Admin
-    summary: 훈련 과정별 업무 체크 상태 및 부서 정보 조회
+    summary: 훈련 과정별 업무 체크 상태 조회
     description: |
       특정 날짜의 훈련 과정별 업무 체크리스트 체크율을 조회합니다.
       
@@ -55,56 +55,49 @@ def get_task_status():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "업무 체크 상태 조회 성공"
             data:
-              type: array
-              items:
-                type: object
-                properties:
-                  training_course:
-                    type: string
-                    example: "데이터 분석 스쿨 4기"
-                  dept:
-                    type: string
-                    example: "TechSol"
-                  manager_name:
-                    type: string
-                    example: "홍길동"
-                  total_tasks:
-                    type: integer
-                    example: 10
-                  checked_tasks:
-                    type: integer
-                    example: 8
-                  check_rate:
-                    type: number
-                    format: float
-                    example: 80.0
-            status_code:
-              type: integer
-              example: 200
+              type: object
+              properties:
+                task_status:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      training_course:
+                        type: string
+                        example: "데이터 분석 스쿨 4기"
+                      dept:
+                        type: string
+                        example: "TechSol"
+                      check_rate:
+                        type: string
+                        example: "80.0%"
+                total_courses:
+                  type: integer
+                  example: 5
+                timestamp:
+                  type: string
+                  format: date-time
+                  example: "2025-01-15T10:30:00"
         examples:
           application/json:
             summary: 체크율 조회 성공 응답
             value:
               success: true
-              error: "업무 체크 상태 조회 성공"
+              message: "업무 체크 상태 조회 성공"
               data:
-                - training_course: "데이터 분석 스쿨 4기"
-                  dept: "TechSol"
-                  manager_name: "홍길동"
-                  total_tasks: 10
-                  checked_tasks: 8
-                  check_rate: 80.0
-                - training_course: "웹 개발 스쿨 3기"
-                  dept: "DevTeam"
-                  manager_name: "김철수"
-                  total_tasks: 12
-                  checked_tasks: 10
-                  check_rate: 83.3
-              status_code: 200
+                task_status:
+                  - training_course: "데이터 분석 스쿨 4기"
+                    dept: "TechSol"
+                    check_rate: "80.0%"
+                  - training_course: "웹 개발 스쿨 3기"
+                    dept: "DevTeam"
+                    check_rate: "83.3%"
+                total_courses: 2
+                timestamp: "2025-01-15T10:30:00"
       400:
         description: 잘못된 날짜 형식
         schema:
@@ -116,6 +109,9 @@ def get_task_status():
             error:
               type: string
               example: "잘못된 날짜 형식입니다. YYYY-MM-DD 형식으로 입력해주세요."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -130,6 +126,9 @@ def get_task_status():
             error:
               type: string
               example: "업무 체크 상태 조회 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -183,7 +182,7 @@ def get_overall_task_status():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "전체 업무 체크 상태 조회 성공"
             data:
@@ -197,42 +196,22 @@ def get_overall_task_status():
                   dept:
                     type: string
                     example: "TechSol"
-                  manager_name:
-                    type: string
-                    example: "홍길동"
-                  total_tasks:
-                    type: integer
-                    example: 150
-                  checked_tasks:
-                    type: integer
-                    example: 120
                   check_rate:
-                    type: number
-                    format: float
-                    example: 80.0
-            status_code:
-              type: integer
-              example: 200
+                    type: string
+                    example: "80.0%"
         examples:
           application/json:
             summary: 전체 체크율 조회 성공 응답
             value:
               success: true
-              error: "전체 업무 체크 상태 조회 성공"
+              message: "전체 업무 체크 상태 조회 성공"
               data:
                 - training_course: "데이터 분석 스쿨 4기"
                   dept: "TechSol"
-                  manager_name: "홍길동"
-                  total_tasks: 150
-                  checked_tasks: 120
-                  check_rate: 80.0
+                  check_rate: "80.0%"
                 - training_course: "웹 개발 스쿨 3기"
                   dept: "DevTeam"
-                  manager_name: "김철수"
-                  total_tasks: 180
-                  checked_tasks: 162
-                  check_rate: 90.0
-              status_code: 200
+                  check_rate: "90.0%"
       500:
         description: 체크율 조회 실패
         schema:
@@ -244,6 +223,9 @@ def get_overall_task_status():
             error:
               type: string
               example: "전체 업무 체크 상태 조회 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -269,6 +251,7 @@ def get_combined_task_status():
     summary: 훈련 과정별 업무 체크율 조회 (당일, 전날, 전체)
     description: |
       각 훈련 과정별로 담당자, 당일 체크율, 전날 체크율, 전체 체크율을 조회합니다.
+      종료된 지 1주일 이내의 과정만 포함됩니다.
       
       ### 사용 예시
       ```javascript
@@ -289,7 +272,7 @@ def get_combined_task_status():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "통합 업무 체크 상태 조회 성공"
             data:
@@ -306,41 +289,34 @@ def get_combined_task_status():
                   manager_name:
                     type: string
                     example: "홍길동"
-                  today_check_rate:
-                    type: number
-                    format: float
-                    example: 80.0
+                  daily_check_rate:
+                    type: string
+                    example: "80.0%"
                   yesterday_check_rate:
-                    type: number
-                    format: float
-                    example: 75.0
+                    type: string
+                    example: "75.0%"
                   overall_check_rate:
-                    type: number
-                    format: float
-                    example: 78.5
-            status_code:
-              type: integer
-              example: 200
+                    type: string
+                    example: "78.5%"
         examples:
           application/json:
             summary: 통합 체크율 조회 성공 응답
             value:
               success: true
-              error: "통합 업무 체크 상태 조회 성공"
+              message: "통합 업무 체크 상태 조회 성공"
               data:
                 - training_course: "데이터 분석 스쿨 4기"
                   dept: "TechSol"
                   manager_name: "홍길동"
-                  today_check_rate: 80.0
-                  yesterday_check_rate: 75.0
-                  overall_check_rate: 78.5
+                  daily_check_rate: "80.0%"
+                  yesterday_check_rate: "75.0%"
+                  overall_check_rate: "78.5%"
                 - training_course: "웹 개발 스쿨 3기"
                   dept: "DevTeam"
                   manager_name: "김철수"
-                  today_check_rate: 90.0
-                  yesterday_check_rate: 85.0
-                  overall_check_rate: 87.5
-              status_code: 200
+                  daily_check_rate: "90.0%"
+                  yesterday_check_rate: "85.0%"
+                  overall_check_rate: "87.5%"
       500:
         description: 체크 상태 조회 실패
         schema:
@@ -352,6 +328,9 @@ def get_combined_task_status():
             error:
               type: string
               example: "통합 업무 체크 상태 조회 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
