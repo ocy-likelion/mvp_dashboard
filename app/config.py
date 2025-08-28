@@ -1,13 +1,21 @@
-import os
-from dotenv import load_dotenv
-
-# .env 파일에서 환경 변수 로드
-load_dotenv()
+from decouple import config
 
 # PostgreSQL 데이터베이스 연결 설정
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    DATABASE_URL = "postgresql://cysss:QJxyP6VuLMAZykzMyeRtO3QJUGMf0aWA@dpg-cuim9pogph6c73acoj0g-a/mvp_dashboard"
+DATABASE_URL = config("DATABASE_URL", default=None)
+
+# SQLAlchemy 설정
+SQLALCHEMY_DATABASE_URI = DATABASE_URL
+SQLALCHEMY_TRACK_MODIFICATIONS = False
+SQLALCHEMY_ENGINE_OPTIONS = {
+    "pool_size": config("DB_POOL_SIZE", default=10, cast=int),
+    "pool_recycle": config("DB_POOL_RECYCLE", default=3600, cast=int),
+    "pool_pre_ping": config("DB_POOL_PRE_PING", default=True, cast=bool),
+    "max_overflow": config("DB_MAX_OVERFLOW", default=20, cast=int),
+}
 
 # 서버 포트 설정
-PORT = int(os.getenv("PORT", 10000))  # 기본값을 10000으로 설정
+PORT = config("PORT", default=10000, cast=int)
+
+# Flask 설정
+SECRET_KEY = config("SECRET_KEY", default="dev-secret-key-change-in-production")
+DEBUG = config("DEBUG", default=False, cast=bool)

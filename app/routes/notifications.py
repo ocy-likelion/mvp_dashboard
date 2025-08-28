@@ -1,112 +1,137 @@
-# app/routes/notifications.py
-from flask import Blueprint, request, jsonify
-from datetime import datetime
-from app.models.db import get_db_connection
+from flask import Blueprint, request
 from app.utils.notifications import SlackNotifier
 import logging
-import requests
 
-notifications_bp = Blueprint('notifications', __name__)
+from app.serializers import (
+    NotificationSerializer,
+    handle_serialization_errors,
+    json_response,
+    error_json_response,
+)
+from app.services import NotificationService
+
+notifications_bp = Blueprint("notifications", __name__)
+logger = logging.getLogger(__name__)
 slack_notifier = SlackNotifier()
 
-@notifications_bp.route('/notifications/unread-count', methods=['GET'])
+
+@notifications_bp.route("/notifications/unread-count", methods=["GET"])
+@handle_serialization_errors
 def get_unread_count():
-    """사용자별 미확인 알림 개수 조회"""
+    """
+    사용자별 미확인 알림 개수 조회 API
+    ---
+    tags:
+      - Notifications
+    summary: 사용자별 미확인 알림 개수 조회
+    description: |
+      특정 사용자의 미확인 알림 개수를 조회하고 마지막 확인 시간을 업데이트합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/notifications/unread-count?username=홍길동', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
+    parameters:
+      - name: username
+        in: query
+        type: string
+        required: true
+        description: 사용자명
+        example: "홍길동"
+    responses:
+      200:
+        description: 미확인 알림 개수 반환
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "미확인 알림 개수 조회 성공"
+            data:
+              type: object
+              properties:
+                new_notices:
+                  type: integer
+                  example: 3
+                new_issues:
+                  type: integer
+                  example: 2
+                new_comments:
+                  type: integer
+                  example: 5
+        examples:
+          application/json:
+            summary: 미확인 알림 개수 조회 성공 응답
+            value:
+              success: true
+              message: "미확인 알림 개수 조회 성공"
+              data:
+                new_notices: 3
+                new_issues: 2
+                new_comments: 5
+      400:
+        description: 사용자명 누락
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "사용자명을 입력해주세요."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
+      500:
+        description: 서버 오류
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "알림 개수 조회 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
+    """
     try:
-        username = request.args.get('username')
-        if not username:
-            return jsonify({"success": False, "message": "사용자명이 필요합니다."}), 400
+        # 쿼리 파라미터를 딕셔너리로 변환
+        query_data = {"username": request.args.get("username")}
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # 데이터 검증
+        validated_data = NotificationSerializer.deserialize_notification_query(
+            query_data
+        )
+        # Service를 사용한 미확인 알림 개수 조회 및 마지막 확인 시간 업데이트
+        validated_data["check_type"] = "all"
+        unread_counts = NotificationService.get_unread_count(validated_data)
+        NotificationService.update_last_check_time(validated_data)
 
-        # 사용자의 마지막 확인 시간 조회
-        cursor.execute("""
-            SELECT last_notice_check, last_issue_check, last_comment_check 
-            FROM user_last_checks 
-            WHERE username = %s
-        """, (username,))
-        
-        last_check = cursor.fetchone()
-        if not last_check:
-            # 첫 로그인인 경우 현재 시간으로 초기화
-            cursor.execute("""
-                INSERT INTO user_last_checks 
-                (username, last_notice_check, last_issue_check, last_comment_check)
-                VALUES (%s, NOW(), NOW(), NOW())
-            """, (username,))
-            conn.commit()
-            return jsonify({
-                "success": True,
-                "data": {
-                    "new_notices": 0,
-                    "new_issues": 0,
-                    "new_comments": 0
-                }
-            }), 200
-
-        # 새로운 항목 개수 조회
-        last_notice_check, last_issue_check, last_comment_check = last_check
-
-        cursor.execute("""
-            SELECT 
-                (SELECT COUNT(*) FROM notices WHERE date > %s) as new_notices,
-                (SELECT COUNT(*) FROM issues WHERE created_at > %s) as new_issues,
-                (SELECT COUNT(*) FROM issue_comments WHERE created_at > %s) as new_comments
-        """, (last_notice_check, last_issue_check, last_comment_check))
-        
-        counts = cursor.fetchone()
-        
-        # 현재 시간으로 마지막 확인 시간 업데이트
-        cursor.execute("""
-            UPDATE user_last_checks 
-            SET last_notice_check = NOW(),
-                last_issue_check = NOW(),
-                last_comment_check = NOW()
-            WHERE username = %s
-        """, (username,))
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "success": True,
-            "data": {
-                "new_notices": counts[0],
-                "new_issues": counts[1],
-                "new_comments": counts[2]
-            }
-        }), 200
+        return json_response(
+            data=unread_counts,
+            message="미확인 알림 개수 조회 성공",
+            status_code=200,
+        )
 
     except Exception as e:
-        logging.error("알림 개수 조회 오류", exc_info=True)
-        return jsonify({"success": False, "message": "알림 개수 조회 실패"}), 500
-
-def send_notification(self, message):
-    if not self.webhook_url:
-        logging.error("SLACK_WEBHOOK_URL이 설정되지 않았습니다.")
-        logging.error(f"현재 환경변수: WEBHOOK_URL={self.webhook_url}, CHANNEL={self.channel}")
-        return False
-        
-    try:
-        payload = {
-            "channel": self.channel,
-            "text": message,
-            "username": "Lion Helper Bot",
-            "icon_emoji": ":lion_face:"
-        }
-        
-        logging.info(f"Slack webhook 호출 시도 - Channel: {self.channel}")
-        response = requests.post(self.webhook_url, json=payload)
-        logging.info(f"Slack 응답 코드: {response.status_code}")
-        logging.info(f"Slack 응답 내용: {response.text}")
-        
-        if response.status_code == 200:
-            return True
-        else:
-            logging.error(f"Slack 알림 전송 실패: {response.status_code}, {response.text}")
-            return False
-    except Exception as e:
-        logging.error(f"Slack 알림 전송 중 오류 발생: {str(e)}", exc_info=True)
-        return False
+        logger.error("알림 개수 조회 오류", exc_info=True)
+        return error_json_response("알림 개수 조회 실패", status_code=500)

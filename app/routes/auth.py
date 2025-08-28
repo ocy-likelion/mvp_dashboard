@@ -1,16 +1,48 @@
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, session
 import logging
-from app.models.db import get_db_connection
 
-auth_bp = Blueprint('auth', __name__)
+from app.serializers import (
+    UserSerializer,
+    json_response,
+    error_json_response,
+    handle_serialization_errors,
+)
+from app.services import UserService
 
-@auth_bp.route('/login', methods=['POST'])
+auth_bp = Blueprint("auth", __name__)
+logger = logging.getLogger(__name__)
+
+
+@auth_bp.route("/login", methods=["POST"])
+@handle_serialization_errors
 def login():
     """
-    로그인 API
+    사용자 로그인 API
     ---
     tags:
       - Authentication
+    summary: 사용자 로그인 및 세션 생성
+    description: |
+      사용자명과 비밀번호를 받아 로그인을 처리합니다.
+      로그인 성공 시 세션 쿠키가 자동으로 설정됩니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // 세션 쿠키 포함
+        body: JSON.stringify({
+          username: 'user123',
+          password: 'password123'
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     parameters:
       - in: body
         name: body
@@ -23,89 +55,286 @@ def login():
           properties:
             username:
               type: string
+              description: 사용자명
+              example: "user123"
             password:
               type: string
+              description: 비밀번호
+              example: "password123"
     responses:
       200:
         description: 로그인 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "로그인 성공!"
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  example: 1
+                username:
+                  type: string
+                  example: "user123"
+                name:
+                  type: string
+                  example: "홍길동"
+                role:
+                  type: string
+                  example: "user"
+        examples:
+          application/json:
+            summary: 로그인 성공 응답
+            value:
+              success: true
+              message: "로그인 성공!"
+              data:
+                id: 1
+                username: "user123"
+                name: "홍길동"
+                role: "user"
       400:
-        description: 필수 데이터 누락
+        description: 필수 데이터 누락 또는 유효성 검사 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "사용자명과 비밀번호를 입력해주세요."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
       401:
         description: 잘못된 ID 또는 비밀번호
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "잘못된 사용자명 또는 비밀번호입니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 401
       500:
         description: 서버 오류
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "서버 오류 발생"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-
-    if not username or not password:
-        return jsonify({"success": False, "message": "ID와 비밀번호를 입력하세요."}), 400
-
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, password FROM users WHERE username = %s", (username,))
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
-
-        if not user or user[1] != password:
-            return jsonify({"success": False, "message": "잘못된 ID 또는 비밀번호입니다."}), 401
+        validated_data = UserSerializer.deserialize_user_login(request.json)
+        user = UserService.login(validated_data)
+        serialized_user = UserSerializer.serialize_user(user)
 
         session.permanent = True  # 세션을 영구적으로 설정
-        user_data = {"id": user[0], "username": username}
-        session['user'] = user_data
+        session["user"] = serialized_user
 
-        return jsonify({
-            "success": True, 
-            "message": "로그인 성공!",
-            "user": user_data  # 사용자 정보 포함
-        }), 200
+        return json_response(
+            data=serialized_user, message="로그인 성공!", status_code=200
+        )
 
+    except ValueError as e:
+        logger.warning(f"로그인 실패: {str(e)}")
+        return error_json_response(str(e), status_code=400)
     except Exception as e:
-        logging.error("로그인 오류", exc_info=True)
-        return jsonify({"success": False, "message": "서버 오류 발생"}), 500
+        logger.error("로그인 오류", exc_info=True)
+        return error_json_response("서버 오류 발생", status_code=500)
 
-@auth_bp.route('/logout', methods=['POST'])
+
+@auth_bp.route("/logout", methods=["POST"])
 def logout():
     """
-    로그아웃 API
+    사용자 로그아웃 API
     ---
     tags:
       - Authentication
+    summary: 사용자 로그아웃 및 세션 삭제
+    description: |
+      현재 로그인된 사용자의 세션을 삭제합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/logout', {
+        method: 'POST',
+        credentials: 'include' // 세션 쿠키 포함
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     responses:
       200:
         description: 로그아웃 완료
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "로그아웃 완료!"
+            data:
+              type: null
+              example: null
+        examples:
+          application/json:
+            summary: 로그아웃 성공 응답
+            value:
+              success: true
+              message: "로그아웃 완료!"
+              data: null
     """
-    session.pop('user', None)
-    return jsonify({"success": True, "message": "로그아웃 완료!"}), 200
+    session.pop("user", None)
+    return json_response(data=None, message="로그아웃 완료!", status_code=200)
 
-@auth_bp.route('/me', methods=['GET'])
+
+@auth_bp.route("/me", methods=["GET"])
 def get_current_user():
     """
-    로그인 상태 확인 API
+    현재 로그인된 사용자 정보 조회 API
     ---
     tags:
       - Authentication
+    summary: 현재 로그인된 사용자 정보 반환
+    description: |
+      현재 세션에 로그인된 사용자의 정보를 반환합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/me', {
+        method: 'GET',
+        credentials: 'include' // 세션 쿠키 포함
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     responses:
       200:
         description: 현재 로그인된 사용자 정보 반환
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "사용자 정보 조회 성공"
+            data:
+              type: object
+              properties:
+                user:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      example: 1
+                    username:
+                      type: string
+                      example: "user123"
+                    name:
+                      type: string
+                      example: "홍길동"
+                    role:
+                      type: string
+                      example: "user"
+        examples:
+          application/json:
+            summary: 사용자 정보 조회 성공 응답
+            value:
+              success: true
+              message: "사용자 정보 조회 성공"
+              data:
+                user:
+                  id: 1
+                  username: "user123"
+                  name: "홍길동"
+                  role: "user"
       401:
         description: 로그인 필요
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "로그인이 필요합니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 401
     """
-    if 'user' not in session:
-        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
-    return jsonify({"success": True, "user": session['user']}), 200
+    if "user" not in session:
+        return error_json_response("로그인이 필요합니다.", status_code=401)
+    return json_response(data={"user": session["user"]}, message="사용자 정보 조회 성공", status_code=200)
 
 
-@auth_bp.route('/user/change-password', methods=['POST'])
+@auth_bp.route("/user/change-password", methods=["POST"])
+@handle_serialization_errors
 def change_password():
     """
     사용자 비밀번호 변경 API
     ---
     tags:
       - Authentication
+    summary: 사용자 비밀번호 변경
+    description: |
+      현재 비밀번호를 확인한 후 새로운 비밀번호로 변경합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/user/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          username: 'user123',
+          current_password: 'current123',
+          new_password: 'new123'
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     parameters:
       - in: body
         name: body
@@ -119,86 +348,102 @@ def change_password():
           properties:
             username:
               type: string
+              description: 사용자명
               example: "user123"
             current_password:
               type: string
+              description: 현재 비밀번호
               example: "current123"
             new_password:
               type: string
+              description: 새로운 비밀번호
               example: "new123"
     responses:
       200:
         description: 비밀번호 변경 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "비밀번호가 성공적으로 변경되었습니다."
+            data:
+              type: null
+              example: null
+        examples:
+          application/json:
+            summary: 비밀번호 변경 성공 응답
+            value:
+              success: true
+              message: "비밀번호가 성공적으로 변경되었습니다."
+              data: null
       400:
-        description: 필수 데이터 누락
+        description: 필수 데이터 누락 또는 유효성 검사 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "모든 필드를 입력해주세요."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
       401:
         description: 현재 비밀번호가 일치하지 않음
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "현재 비밀번호가 일치하지 않습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 401
       500:
         description: 서버 오류 발생
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "비밀번호 변경 중 오류가 발생했습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        data = request.json
-        username = data.get('username')
-        current_password = data.get('current_password')
-        new_password = data.get('new_password')
+        validated_data = UserSerializer.deserialize_password_change(request.json)
+        UserService.change_password(validated_data)
 
-        if not username or not current_password or not new_password:
-            return jsonify({
-                "success": False, 
-                "message": "사용자명, 현재 비밀번호, 새 비밀번호를 모두 입력하세요."
-            }), 400
-            
-        # 새 비밀번호 유효성 검사 (필요한 경우)
-        if len(new_password) < 4:
-            return jsonify({
-                "success": False,
-                "message": "새 비밀번호는 최소 4자 이상이어야 합니다."
-            }), 400
-            
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # 현재 비밀번호 확인
-        cursor.execute(
-            "SELECT id FROM users WHERE username = %s AND password = %s",
-            (username, current_password)
+        return json_response(
+            data=None,
+            message="비밀번호가 성공적으로 변경되었습니다.",
+            status_code=200,
         )
-        user = cursor.fetchone()
-        
-        if not user:
-            cursor.close()
-            conn.close()
-            return jsonify({
-                "success": False,
-                "message": "사용자명 또는 현재 비밀번호가 일치하지 않습니다."
-            }), 401
-            
-        # 비밀번호 업데이트
-        cursor.execute(
-            "UPDATE users SET password = %s WHERE username = %s AND password = %s",
-            (new_password, username, current_password)
-        )
-        
-        if cursor.rowcount == 0:
-            cursor.close()
-            conn.close()
-            return jsonify({
-                "success": False,
-                "message": "비밀번호 변경에 실패했습니다."
-            }), 500
-            
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            "success": True,
-            "message": "비밀번호가 성공적으로 변경되었습니다."
-        }), 200
-        
+
     except Exception as e:
-        logging.error("비밀번호 변경 오류", exc_info=True)
-        return jsonify({
-            "success": False,
-            "message": "비밀번호 변경 중 오류가 발생했습니다."
-        }), 500
+        logger.error("비밀번호 변경 오류", exc_info=True)
+        return error_json_response(
+            "비밀번호 변경 중 오류가 발생했습니다.", status_code=500
+        )

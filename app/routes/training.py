@@ -1,11 +1,20 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 import logging
-from app.models.db import get_db_connection
-from datetime import datetime
 
-training_bp = Blueprint('training', __name__)
+from app.serializers import (
+    TrainingSerializer,
+    UncheckedSerializer,
+    json_response,
+    error_json_response,
+    handle_serialization_errors,
+)
+from app.services import TrainingService, UncheckedService
 
-@training_bp.route('/training_courses', methods=['GET'])
+training_bp = Blueprint("training", __name__)
+logger = logging.getLogger(__name__)
+
+
+@training_bp.route("/training_courses", methods=["GET"])
 def get_training_courses():
     """
     training_info 테이블에서 training_course 목록을 가져오는 API
@@ -13,44 +22,108 @@ def get_training_courses():
     ---
     tags:
       - Training Info
+    summary: 활성 훈련 과정 목록 조회
+    description: |
+      현재 진행 중이거나 종료된 지 1주일 이내의 훈련 과정 목록을 조회합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/training_courses', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     responses:
       200:
         description: 유효한 훈련과정 목록 반환
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "훈련 과정 목록 조회 성공"
+            data:
+              type: array
+              items:
+                type: string
+              example: ["데이터 분석 스쿨 4기", "웹 개발 스쿨 3기"]
+        examples:
+          application/json:
+            summary: 훈련 과정 목록 조회 성공 응답
+            value:
+              success: true
+              message: "훈련 과정 목록 조회 성공"
+              data: ["데이터 분석 스쿨 4기", "웹 개발 스쿨 3기"]
       500:
         description: 훈련과정 목록 불러오기 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "훈련 과정 목록을 불러오는데 실패했습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # 현재 날짜 기준으로 종료된 지 1주일 이내이거나 아직 진행 중인 과정만 조회
-        cursor.execute('''
-            SELECT training_course 
-            FROM training_info 
-            WHERE end_date >= CURRENT_DATE - INTERVAL '7 days'
-            ORDER BY start_date DESC
-        ''')
-        
-        courses = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        course_names = TrainingService.get_active_training_courses()
 
-        return jsonify({
-            "success": True,
-            "data": [course[0] for course in courses]
-        }), 200
+        return json_response(
+            data=course_names, message="훈련 과정 목록 조회 성공", status_code=200
+        )
+
     except Exception as e:
-        logging.error("Error fetching training courses", exc_info=True)
-        return jsonify({"success": False, "message": "훈련 과정 목록을 불러오는데 실패했습니다."}), 500
+        logger.error("Error fetching training courses", exc_info=True)
+        return error_json_response(
+            "훈련 과정 목록을 불러오는데 실패했습니다.", status_code=500
+        )
 
 
-@training_bp.route('/training_info', methods=['POST'])
+@training_bp.route("/training_info", methods=["POST"])
+@handle_serialization_errors
 def save_training_info():
     """
     훈련 과정 정보 저장 API
     ---
     tags:
       - Training Info
+    summary: 새로운 훈련 과정 정보 저장
+    description: |
+      새로운 훈련 과정 정보를 저장합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/training_info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          training_course: "데이터 분석 스쿨 100기",
+          start_date: "2025-01-02",
+          end_date: "2025-06-01",
+          dept: "TechSol",
+          manager_name: "홍길동"
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     parameters:
       - in: body
         name: body
@@ -85,153 +158,360 @@ def save_training_info():
     responses:
       201:
         description: 훈련 과정 저장 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "훈련 과정이 저장되었습니다!"
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  example: 1
+                training_course:
+                  type: string
+                  example: "데이터 분석 스쿨 100기"
+                start_date:
+                  type: string
+                  format: date
+                  example: "2025-01-02"
+                end_date:
+                  type: string
+                  format: date
+                  example: "2025-06-01"
+                dept:
+                  type: string
+                  example: "TechSol"
+                manager_name:
+                  type: string
+                  example: "홍길동"
+        examples:
+          application/json:
+            summary: 훈련 과정 저장 성공 응답
+            value:
+              success: true
+              message: "훈련 과정이 저장되었습니다!"
+              data:
+                id: 1
+                training_course: "데이터 분석 스쿨 100기"
+                start_date: "2025-01-02"
+                end_date: "2025-06-01"
+                dept: "TechSol"
+                manager_name: "홍길동"
       400:
         description: 필수 필드 누락
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "필수 필드가 누락되었습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
       500:
         description: 훈련 과정 저장 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "훈련 과정 저장 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        data = request.json
-        training_course = data.get("training_course", "").strip()
-        start_date = data.get("start_date", "").strip()
-        end_date = data.get("end_date", "").strip()
-        dept = data.get("dept", "").strip()
-        manager_name = data.get("manager_name", "").strip()
+        validated_data = TrainingSerializer.deserialize_training_info_create(
+            request.json
+        )
+        training_data = TrainingService.create_training_info(validated_data)
 
-        if not training_course or not start_date or not end_date or not dept or not manager_name:
-            return jsonify({"success": False, "message": "모든 필드를 입력하세요."}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            INSERT INTO training_info (training_course, start_date, end_date, dept, manager_name)
-            VALUES (%s, %s, %s, %s, %s)
-        ''', (training_course, start_date, end_date, dept, manager_name))
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "message": "훈련 과정이 저장되었습니다!"}), 201
+        return json_response(
+            data=training_data, message="훈련 과정이 저장되었습니다!", status_code=201
+        )
     except Exception as e:
-        logging.error("Error saving training info", exc_info=True)
-        return jsonify({"success": False, "message": "Failed to save training info"}), 500
+        logger.error("Error saving training info", exc_info=True)
+        return error_json_response("훈련 과정 저장 실패", status_code=500)
 
 
-@training_bp.route('/training_info', methods=['GET'])
+@training_bp.route("/training_info", methods=["GET"])
 def get_training_info():
     """
     훈련 과정 목록 조회 API
     ---
     tags:
       - Training Info
+    summary: 모든 훈련 과정 정보 조회
+    description: |
+      저장된 모든 훈련 과정 정보를 조회합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/training_info', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     responses:
       200:
         description: 저장된 훈련 과정 목록 반환
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "훈련 과정 목록 조회 성공"
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  training_course:
+                    type: string
+                    example: "데이터 분석 스쿨 4기"
+                  start_date:
+                    type: string
+                    format: date
+                    example: "2025-01-02"
+                  end_date:
+                    type: string
+                    format: date
+                    example: "2025-06-01"
+                  dept:
+                    type: string
+                    example: "TechSol"
+                  manager_name:
+                    type: string
+                    example: "홍길동"
+        examples:
+          application/json:
+            summary: 훈련 과정 목록 조회 성공 응답
+            value:
+              success: true
+              message: "훈련 과정 목록 조회 성공"
+              data:
+                - id: 1
+                  training_course: "데이터 분석 스쿨 4기"
+                  start_date: "2025-01-02"
+                  end_date: "2025-06-01"
+                  dept: "TechSol"
+                  manager_name: "홍길동"
+                - id: 2
+                  training_course: "웹 개발 스쿨 3기"
+                  start_date: "2025-02-01"
+                  end_date: "2025-07-01"
+                  dept: "DevTeam"
+                  manager_name: "김철수"
       500:
         description: 훈련 과정 목록 조회 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "훈련 과정 목록 조회 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        courses_data = TrainingService.get_all_training_info()
+        serialized_courses_data = TrainingSerializer.serialize_training_info(
+            courses_data
+        )
 
-        cursor.execute('SELECT training_course, start_date, end_date, dept FROM training_info ORDER BY start_date DESC')
-        courses = cursor.fetchall()
+        return json_response(
+            data=serialized_courses_data, message="훈련 과정 목록 조회 성공", status_code=200
+        )
 
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "success": True,
-            "data": [
-                {"training_course": row[0], "start_date": row[1], "end_date": row[2], "dept": row[3]}
-                for row in courses
-            ]
-        })
     except Exception as e:
-        logging.error("Error fetching training info", exc_info=True)
-        return jsonify({"success": False, "message": "Failed to fetch training info"}), 500
+        logger.error("Error fetching training info", exc_info=True)
+        return error_json_response("훈련 과정 목록 조회 실패", status_code=500)
 
 
-@training_bp.route('/unchecked_descriptions', methods=['GET'])
+@training_bp.route("/unchecked_descriptions", methods=["GET"])
 def get_unchecked_descriptions():
     """
     미체크 항목 설명 및 액션 플랜 조회 API (부서명 포함)
     ---
     tags:
       - Unchecked Descriptions
+    summary: 미체크 항목 목록 조회
+    description: |
+      미체크 항목의 설명과 액션 플랜을 부서명과 함께 조회합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/unchecked_descriptions', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     responses:
       200:
         description: 미체크 항목 목록 조회 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "미체크 항목 목록 조회 성공"
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  content:
+                    type: string
+                    example: "출석 체크 미완료"
+                  action_plan:
+                    type: string
+                    example: "매일 출석을 체크하도록 안내"
+                  training_course:
+                    type: string
+                    example: "데이터 분석 스쿨 4기"
+                  dept:
+                    type: string
+                    example: "TechSol"
+                  created_at:
+                    type: string
+                    format: date-time
+                    example: "2025-01-15T10:30:00"
+                  resolved:
+                    type: boolean
+                    example: false
+                  due_days:
+                    type: integer
+                    example: 3
+                  deadline:
+                    type: string
+                    format: date
+                    example: "2025-01-18"
+                  is_overdue:
+                    type: boolean
+                    example: false
+        examples:
+          application/json:
+            summary: 미체크 항목 목록 조회 성공 응답
+            value:
+              success: true
+              message: "미체크 항목 목록 조회 성공"
+              data:
+                - id: 1
+                  content: "출석 체크 미완료"
+                  action_plan: "매일 출석을 체크하도록 안내"
+                  training_course: "데이터 분석 스쿨 4기"
+                  dept: "TechSol"
+                  created_at: "2025-01-15T10:30:00"
+                  resolved: false
+                  due_days: 3
+                  deadline: "2025-01-18"
+                  is_overdue: false
       500:
         description: 미체크 항목 목록 조회 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "미체크 항목 목록 조회 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        unchecked_items = UncheckedService.get_unchecked_descriptions()
+        serialized_unchecked_items = UncheckedSerializer.serialize_unchecked_descriptions(unchecked_items)
+        
+        return json_response(
+            data=serialized_unchecked_items,
+            message="미체크 항목 목록 조회 성공",
+            status_code=200,
+        )
 
-        cursor.execute('''
-            SELECT 
-                ud.id, 
-                ud.content, 
-                ud.action_plan, 
-                ud.training_course, 
-                ti.dept, 
-                ud.created_at, 
-                ud.resolved,
-                COALESCE(ti2.due, 3) as due,  -- due가 없으면 기본값 3일
-                (ud.created_at + (COALESCE(ti2.due, 3) || ' days')::interval)::date as deadline,
-                CASE 
-                    WHEN CURRENT_DATE > (ud.created_at + (COALESCE(ti2.due, 3) || ' days')::interval)::date 
-                    THEN TRUE 
-                    ELSE FALSE 
-                END as is_overdue
-            FROM unchecked_descriptions ud
-            JOIN training_info ti ON ud.training_course = ti.training_course
-            LEFT JOIN task_items ti2 ON ud.content LIKE ti2.task_name || '%에 대한 미체크 사유'  -- LIKE 연산자 사용
-            WHERE ud.resolved = FALSE  
-            ORDER BY ud.created_at DESC;
-        ''')
-        unchecked_items = cursor.fetchall()
-
-        # 디버깅을 위한 로깅 추가
-        logging.info(f"Found {len(unchecked_items)} unchecked items")
-        for item in unchecked_items:
-            logging.info(f"Item content: {item[1]}, due days: {item[7]}")
-
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "success": True,
-            "data": [
-                {
-                    "id": row[0],
-                    "content": row[1],
-                    "action_plan": row[2],
-                    "training_course": row[3],
-                    "dept": row[4],
-                    "created_at": row[5],
-                    "resolved": row[6],
-                    "due_days": row[7],
-                    "deadline": row[8],
-                    "is_overdue": row[9]
-                } for row in unchecked_items
-            ]
-        }), 200
     except Exception as e:
-        logging.error("Error retrieving unchecked descriptions", exc_info=True)
-        return jsonify({"success": False, "message": "미체크 항목 목록을 불러오는 중 오류 발생"}), 500
+        logger.error("Error retrieving unchecked descriptions", exc_info=True)
+        return error_json_response("미체크 항목 목록 조회 실패", status_code=500)
 
 
-@training_bp.route('/unchecked_descriptions', methods=['POST'])
+@training_bp.route("/unchecked_descriptions", methods=["POST"])
+@handle_serialization_errors
 def save_unchecked_description():
     """
     미체크 항목 설명과 액션 플랜 저장 API
     ---
     tags:
       - Unchecked Descriptions
+    summary: 새로운 미체크 항목 저장
+    description: |
+      새로운 미체크 항목의 설명과 액션 플랜을 저장합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/unchecked_descriptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          content: "출석 체크 미완료",
+          action_plan: "매일 출석을 체크하도록 안내",
+          training_course: "데이터 분석 스쿨 4기"
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     parameters:
       - in: body
         name: body
@@ -239,62 +519,125 @@ def save_unchecked_description():
         schema:
           type: object
           required:
-            - description
+            - content
             - action_plan
             - training_course
           properties:
-            description:
+            content:
               type: string
+              description: 미체크 항목 내용
+              example: "출석 체크 미완료"
             action_plan:
               type: string
+              description: 액션 플랜
+              example: "매일 출석을 체크하도록 안내"
             training_course:
               type: string
+              description: 훈련 과정명
+              example: "데이터 분석 스쿨 4기"
     responses:
       201:
         description: 미체크 항목과 액션 플랜이 성공적으로 저장됨
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "미체크 항목과 액션 플랜이 저장되었습니다!"
+            data:
+              type: null
+              example: null
+        examples:
+          application/json:
+            summary: 미체크 항목 저장 성공 응답
+            value:
+              success: true
+              message: "미체크 항목과 액션 플랜이 저장되었습니다!"
+              data: null
       400:
         description: 필수 데이터 누락
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "필수 데이터가 누락되었습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
       500:
         description: 서버 오류 발생
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "미체크 항목 저장 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        if not request.is_json:
-            return jsonify({"success": False, "message": "Invalid JSON format"}), 400
+        validated_data = UncheckedSerializer.deserialize_unchecked_description_create(
+            request.json
+        )
+        UncheckedService.create_unchecked_description(validated_data)
 
-        data = request.get_json()
-        description = data.get("description", "").strip()
-        action_plan = data.get("action_plan", "").strip()
-        training_course = data.get("training_course", "").strip()
-
-        if not description or not action_plan or not training_course:
-            return jsonify({"success": False, "message": "설명, 액션 플랜, 훈련과정명을 모두 입력하세요."}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            INSERT INTO unchecked_descriptions (content, action_plan, training_course, created_at, resolved)
-            VALUES (%s, %s, %s, NOW(), FALSE)
-        ''', (description, action_plan, training_course))
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "message": "미체크 항목과 액션 플랜이 저장되었습니다!"}), 201
+        return json_response(
+            data=None,
+            message="미체크 항목과 액션 플랜이 저장되었습니다!",
+            status_code=201,
+        )
 
     except Exception as e:
-        logging.error("Error saving unchecked description", exc_info=True)
-        return jsonify({"success": False, "message": "서버 오류 발생"}), 500
+        logger.error("Error saving unchecked description", exc_info=True)
+        return error_json_response("미체크 항목 저장 실패", status_code=500)
 
 
-@training_bp.route('/unchecked_comments', methods=['POST'])
+@training_bp.route("/unchecked_comments", methods=["POST"])
+@handle_serialization_errors
 def add_unchecked_comment():
     """
     미체크 항목에 댓글 추가 API
     ---
     tags:
       - Unchecked Comments
+    summary: 미체크 항목에 댓글 추가
+    description: |
+      특정 미체크 항목에 댓글을 추가합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/unchecked_comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          unchecked_id: 1,
+          comment: "이 문제를 해결하기 위해 추가 조치가 필요합니다."
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     parameters:
       - in: body
         name: body
@@ -307,47 +650,111 @@ def add_unchecked_comment():
           properties:
             unchecked_id:
               type: integer
+              description: 미체크 항목 ID
+              example: 1
             comment:
               type: string
+              description: 댓글 내용
+              example: "이 문제를 해결하기 위해 추가 조치가 필요합니다."
     responses:
       201:
         description: 댓글 저장 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "댓글이 저장되었습니다."
+            data:
+              type: null
+              example: null
+        examples:
+          application/json:
+            summary: 댓글 저장 성공 응답
+            value:
+              success: true
+              message: "댓글이 저장되었습니다."
+              data: null
       400:
         description: 요청 데이터 오류
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "요청 데이터가 올바르지 않습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
       500:
         description: 서버 오류 발생
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "댓글 저장 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        data = request.json
-        unchecked_id = data.get('unchecked_id')
-        comment = data.get('comment')
-
-        if not unchecked_id or not comment:
-            return jsonify({"success": False, "message": "미체크 항목 ID와 댓글 내용을 입력하세요."}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO unchecked_comments (unchecked_id, comment, created_at) VALUES (%s, %s, NOW())",
-            (unchecked_id, comment)
+        validated_data = UncheckedSerializer.deserialize_unchecked_comment_create(
+            request.json
         )
-        conn.commit()
-        cursor.close()
-        conn.close()
+        UncheckedService.add_unchecked_comment(validated_data)
 
-        return jsonify({"success": True, "message": "댓글이 저장되었습니다."}), 201
+        return json_response(
+            data=None, message="댓글이 저장되었습니다.", status_code=201
+        )
     except Exception as e:
-        logging.error("Error saving unchecked comment", exc_info=True)
-        return jsonify({"success": False, "message": "댓글 저장 실패"}), 500
+        logger.error("Error saving unchecked comment", exc_info=True)
+        return error_json_response("댓글 저장 실패", status_code=500)
 
 
-@training_bp.route('/unchecked_descriptions/resolve', methods=['POST'])
+@training_bp.route("/unchecked_descriptions/resolve", methods=["POST"])
+@handle_serialization_errors
 def resolve_unchecked_description():
     """
     미체크 항목 해결 API
     ---
     tags:
       - Unchecked Descriptions
+    summary: 미체크 항목 해결 처리
+    description: |
+      특정 미체크 항목을 해결된 상태로 변경합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/unchecked_descriptions/resolve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          unchecked_id: 1
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     parameters:
       - in: body
         name: body
@@ -359,75 +766,194 @@ def resolve_unchecked_description():
           properties:
             unchecked_id:
               type: integer
+              description: 해결할 미체크 항목 ID
+              example: 1
     responses:
       200:
         description: 미체크 항목 해결 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "미체크 항목이 해결되었습니다."
+            data:
+              type: null
+              example: null
+        examples:
+          application/json:
+            summary: 미체크 항목 해결 성공 응답
+            value:
+              success: true
+              message: "미체크 항목이 해결되었습니다."
+              data: null
       400:
         description: 요청 데이터 오류
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "요청 데이터가 올바르지 않습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
       500:
         description: 서버 오류 발생
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "미체크 항목 해결 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        data = request.json
-        unchecked_id = data.get('unchecked_id')
+        validated_data = UncheckedSerializer.deserialize_unchecked_resolve(request.json)
+        UncheckedService.resolve_unchecked_description(validated_data)
 
-        if not unchecked_id:
-            return jsonify({"success": False, "message": "미체크 항목 ID가 필요합니다."}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE unchecked_descriptions SET resolved = TRUE WHERE id = %s", (unchecked_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "message": "미체크 항목이 해결되었습니다."}), 200
+        return json_response(
+            data=None, message="미체크 항목이 해결되었습니다.", status_code=200
+        )
     except Exception as e:
-        logging.error("Error resolving unchecked description", exc_info=True)
-        return jsonify({"success": False, "message": "미체크 항목 해결 실패"}), 500
+        logger.error("Error resolving unchecked description", exc_info=True)
+        return error_json_response("미체크 항목 해결 실패", status_code=500)
 
 
-@training_bp.route('/unchecked_comments', methods=['GET'])
+@training_bp.route("/unchecked_comments", methods=["GET"])
 def get_unchecked_comments():
     """
     미체크 항목의 댓글 조회 API
-    --- 
+    ---
     tags:
       - Unchecked Comments
+    summary: 미체크 항목의 댓글 목록 조회
+    description: |
+      특정 미체크 항목의 댓글 목록을 조회합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/unchecked_comments?unchecked_id=1', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     parameters:
       - name: unchecked_id
         in: query
         type: integer
         required: true
         description: "조회할 미체크 항목 ID"
+        example: 1
     responses:
       200:
         description: 미체크 항목의 댓글 목록 반환
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "미체크 항목 댓글 조회 성공"
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  comment:
+                    type: string
+                    example: "이 문제를 해결하기 위해 추가 조치가 필요합니다."
+                  created_at:
+                    type: string
+                    format: date-time
+                    example: "2025-01-15T10:30:00"
+                  unchecked_id:
+                    type: integer
+                    example: 1
+        examples:
+          application/json:
+            summary: 댓글 목록 조회 성공 응답
+            value:
+              success: true
+              message: "미체크 항목 댓글 조회 성공"
+              data:
+                - id: 1
+                  comment: "이 문제를 해결하기 위해 추가 조치가 필요합니다."
+                  created_at: "2025-01-15T10:30:00"
+                  unchecked_id: 1
+                - id: 2
+                  comment: "관련 부서에 문의하여 해결 방안을 모색하겠습니다."
+                  created_at: "2025-01-15T11:00:00"
+                  unchecked_id: 1
       400:
         description: "미체크 항목 ID 누락"
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "미체크 항목 ID가 누락되었습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
       500:
         description: "댓글 조회 실패"
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "미체크 항목 댓글 조회 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        unchecked_id = request.args.get('unchecked_id')
+        validated_data = UncheckedSerializer.deserialize_unchecked_comment_get(request.args)
+        comments = UncheckedService.get_unchecked_comments(validated_data)
+        serialized_comments = UncheckedSerializer.serialize_unchecked_comments(comments)
 
-        if not unchecked_id:
-            return jsonify({"success": False, "message": "미체크 항목 ID를 입력하세요."}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, comment, created_at FROM unchecked_comments WHERE unchecked_id = %s ORDER BY created_at ASC",
-            (unchecked_id,)
+        return json_response(
+            data=serialized_comments, message="미체크 항목 댓글 조회 성공", status_code=200
         )
-        comments = cursor.fetchall()
-        cursor.close()
-        conn.close()
 
-        return jsonify({
-            "success": True,
-            "data": [{"id": row[0], "comment": row[1], "created_at": row[2]} for row in comments]
-        }), 200
     except Exception as e:
-        logging.error("Error retrieving unchecked comments", exc_info=True)
-        return jsonify({"success": False, "message": "미체크 항목 댓글 조회 실패"}), 500
+        logger.error("Error retrieving unchecked comments", exc_info=True)
+        return error_json_response("미체크 항목 댓글 조회 실패", status_code=500)

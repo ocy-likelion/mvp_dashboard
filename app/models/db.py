@@ -1,12 +1,41 @@
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, scoped_session
+from app.config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_ENGINE_OPTIONS
+
+db = SQLAlchemy()
+
+
+def init_db(app):
+    """데이터베이스 초기화"""
+    db.init_app(app)
+
+    # 엔진 생성
+    engine = create_engine(SQLALCHEMY_DATABASE_URI, **SQLALCHEMY_ENGINE_OPTIONS)
+
+    # 세션 팩토리 생성
+    session_factory = sessionmaker(bind=engine)
+    Session = scoped_session(session_factory)
+
+    # 앱에 db 객체 등록
+    app.db = db
+
+    return Session
+
+
+def get_db_session():
+    """데이터베이스 세션 반환"""
+    from flask import current_app
+
+    return current_app.db.session
+
+
+# 기존 psycopg2 연결 함수 (마이그레이션 중 호환성을 위해 유지)
 import psycopg2
-import os
+from app.config import DATABASE_URL
+
 
 def get_db_connection():
     """PostgreSQL 데이터베이스 연결 함수"""
-    # 직접 환경 변수에서 DATABASE_URL 값을 읽습니다
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if not DATABASE_URL:
-        DATABASE_URL = "postgresql://cysss:QJxyP6VuLMAZykzMyeRtO3QJUGMf0aWA@dpg-cuim9pogph6c73acoj0g-a/mvp_dashboard"
-    
     conn = psycopg2.connect(DATABASE_URL)
     return conn

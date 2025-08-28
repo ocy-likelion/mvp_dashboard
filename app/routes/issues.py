@@ -1,327 +1,840 @@
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, send_file
 import io
 import pandas as pd
 import logging
-from app.models.db import get_db_connection
-from app.utils.notifications import SlackNotifier
-from datetime import datetime
 
-issues_bp = Blueprint('issues', __name__)
+from app.utils.notifications import SlackNotifier
+from app.serializers import (
+    IssueSerializer,
+    json_response,
+    error_json_response,
+    handle_serialization_errors,
+)
+from app.services import IssueService
+
+issues_bp = Blueprint("issues", __name__)
 
 logger = logging.getLogger(__name__)
 
-@issues_bp.route('/issues', methods=['POST'])
+
+@issues_bp.route("/issues", methods=["POST"])
+@handle_serialization_errors
 def create_issue():
     """
     이슈 생성 API
-    """
-    try:
-        data = request.json
-        logger.info(f"Received issue data: {data}")
-        
-        # 1. 필수 필드 검사
-        required_fields = ['issue', 'training_course', 'username']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        
-        if missing_fields:
-            logger.error(f"Missing required fields: {missing_fields}")
-            return jsonify({
-                "success": False,
-                "message": f"필수 필드가 누락되었습니다: {', '.join(missing_fields)}"
-            }), 400
-
-        # 2. 기본값 설정
-        issue_data = {
-            'content': data['issue'],
-            'training_course': data['training_course'],
-            'username': data['username'],
-            'created_by': data['username'],  # username과 동일하게 설정
-            'date': data.get('date'),
-            'created_at': datetime.now().isoformat(),
-            'resolved': False  # 기본값 False
-        }
-
-        # 3. 데이터베이스 저장
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            INSERT INTO issues 
-            (content, training_course, username, created_by, date, created_at, resolved)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        ''', (
-            issue_data['content'],
-            issue_data['training_course'],
-            issue_data['username'],
-            issue_data['created_by'],
-            issue_data['date'],
-            issue_data['created_at'],
-            issue_data['resolved']
-        ))
-
-        issue_id = cursor.fetchone()[0]
-        conn.commit()
-
-        # 4. Slack 알림 전송
-        try:
-            notifier = SlackNotifier()
-            message = f"*새로운 이슈가 등록되었습니다!*\n" \
-                     f">*과정:* {issue_data['training_course']}\n" \
-                     f">*내용:* {issue_data['content']}\n" \
-                     f">*작성자:* {issue_data['username']}"
-            notifier.send_notification(message, 'issue')
-        except Exception as e:
-            logger.error(f"Slack notification failed: {str(e)}")
-
-        # 5. 성공 응답
-        return jsonify({
-            "success": True,
-            "message": "이슈가 성공적으로 생성되었습니다.",
-            "data": {
-                "id": issue_id,
-                **issue_data
-            }
-        }), 201
-
-    except Exception as e:
-        logger.error(f"Error creating issue: {str(e)}", exc_info=True)
-        return jsonify({
-            "success": False,
-            "message": "이슈 생성 중 오류가 발생했습니다."
-        }), 500
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
-
-
-@issues_bp.route('/issues', methods=['GET'])
-def get_issues():
-    """
-    해결되지 않은 이슈 목록 조회 API
     ---
     tags:
       - Issues
-    summary: "해결되지 않은 이슈 목록을 조회합니다."
-    responses:
-      200:
-        description: 해결되지 않은 이슈 목록 반환
-      500:
-        description: 이슈 목록 조회 실패
-    """
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            SELECT training_course, json_agg(json_build_object(
-                'id', i.id, 
-                'content', i.content, 
-                'date', i.date, 
-                'created_at', i.created_at,
-                'created_by', COALESCE(i.created_by, '작성자 없음'),
-                'resolved', i.resolved,
-                'comments', (
-                    SELECT json_agg(json_build_object(
-                        'id', ic.id, 
-                        'comment', ic.comment,
-                        'created_at', ic.created_at,
-                        'created_by', COALESCE(ic.created_by, '작성자 없음')
-                    )) FROM issue_comments ic WHERE ic.issue_id = i.id
-                )
-            )) AS issues
-            FROM issues i
-            WHERE i.resolved = FALSE  
-            GROUP BY training_course
-            ORDER BY MIN(i.created_at) DESC;
-        ''')
-        issues_grouped = cursor.fetchall()
-
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "success": True,
-            "data": [
-                {"training_course": row[0], "issues": row[1]} for row in issues_grouped
-            ]
-        }), 200
-    except Exception as e:
-        logging.error("Error retrieving issues", exc_info=True)
-        return jsonify({"success": False, "message": "이슈 목록을 불러오는 중 오류 발생"}), 500
-
-
-# 이슈에 대한 댓글 달기
-@issues_bp.route('/issues/comments', methods=['POST'])
-def add_comment():
-    try:
-        data = request.json
-        issue_id = data.get('issue_id')
-        comment = data.get('comment')
-        created_by = data.get('username')
-
-        if not all([issue_id, comment, created_by]):
-            return jsonify({"success": False, "message": "필수 데이터가 누락되었습니다."}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # 이슈 정보 조회 시 'issue' 대신 'content' 사용
-        cursor.execute('''
-            SELECT content, training_course FROM issues WHERE id = %s
-        ''', (issue_id,))
-        issue_info = cursor.fetchone()
-        
-        if not issue_info:
-            cursor.close()
-            conn.close()
-            return jsonify({"success": False, "message": "해당 이슈를 찾을 수 없습니다."}), 404
-
-        # 댓글 저장
-        cursor.execute('''
-            INSERT INTO issue_comments (issue_id, comment, created_by, created_at)
-            VALUES (%s, %s, %s, %s)
-        ''', (issue_id, comment, created_by, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        # 댓글 등록 알림
-        notifier = SlackNotifier()
-        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n과정명: {issue_info[1]}\n댓글: {comment}"
-        notifier.send_notification(notification_message, channel_type='comment')
-
-        return jsonify({"success": True, "message": "댓글이 등록되었습니다."}), 201
-    except Exception as e:
-        logger.error(f"댓글 등록 중 오류: {str(e)}")
-        return jsonify({"success": False, "message": "댓글 등록 실패"}), 500
-
-# 이슈에 대한 댓글 조회
-@issues_bp.route('/issues/comments', methods=['GET'])
-def get_issue_comments():
-    """
-    이슈사항의 댓글 조회 API
-    ---
-    tags:
-      - Issues
-    summary: "특정 이슈에 대한 댓글 목록을 조회합니다."
-    parameters:
-      - name: issue_id
-        in: query
-        type: integer
-        required: true
-        description: "조회할 이슈 ID"
-    responses:
-      200:
-        description: 이슈사항의 댓글 목록 반환
-      500:
-        description: 댓글 조회 실패
-    """
-    try:
-        issue_id = request.args.get('issue_id')
-
-        if not issue_id:
-            return jsonify({"success": False, "message": "이슈 ID를 입력하세요."}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, comment, created_at, created_by FROM issue_comments WHERE issue_id = %s ORDER BY created_at ASC",
-            (issue_id,)
-        )
-        comments = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "success": True,
-            "data": [
-                {
-                    "id": row[0], 
-                    "comment": row[1], 
-                    "created_at": row[2],
-                    "created_by": row[3] if row[3] else "작성자 없음"  # created_by가 NULL인 경우 처리
-                } for row in comments
-            ]
-        }), 200
-    except Exception as e:
-        logging.error("Error retrieving issue comments", exc_info=True)
-        return jsonify({"success": False, "message": "댓글 조회 실패"}), 500
-
-# 해결된 이슈 클릭
-@issues_bp.route('/issues/resolve', methods=['POST'])
-def resolve_issue():
-    """
-    이슈 해결 API
-    ---
-    tags:
-      - Issues
-    summary: "특정 이슈를 해결 처리합니다."
+    summary: 새로운 이슈 생성
+    description: |
+      새로운 이슈를 생성합니다. 생성 후 Slack 알림이 자동으로 전송됩니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/issues', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          content: '시스템 로그인이 안 되는 문제가 있습니다.',
+          training_course: '데이터 분석 스쿨 4기',
+          username: '홍길동',
+          date: '2025-01-15'
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
     parameters:
       - in: body
         name: body
         required: true
         schema:
           type: object
+          required:
+            - content
+            - training_course
+            - username
+          properties:
+            content:
+              type: string
+              description: 이슈 내용
+              example: "시스템 로그인이 안 되는 문제가 있습니다."
+            training_course:
+              type: string
+              description: 교육 과정명
+              example: "데이터 분석 스쿨 4기"
+            username:
+              type: string
+              description: 작성자명
+              example: "홍길동"
+            date:
+              type: string
+              description: 이슈 발생 날짜 (선택사항)
+              example: "2025-01-15"
+    responses:
+      201:
+        description: 이슈 생성 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "이슈가 성공적으로 생성되었습니다."
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  example: 1
+                content:
+                  type: string
+                  example: "시스템 로그인이 안 되는 문제가 있습니다."
+                training_course:
+                  type: string
+                  example: "데이터 분석 스쿨 4기"
+                username:
+                  type: string
+                  example: "홍길동"
+                date:
+                  type: string
+                  format: date
+                  example: "2025-01-15"
+                created_at:
+                  type: string
+                  format: date-time
+                  example: "2025-01-15T10:30:00"
+                resolved:
+                  type: boolean
+                  example: false
+        examples:
+          application/json:
+            summary: 이슈 생성 성공 응답
+            value:
+              success: true
+              message: "이슈가 성공적으로 생성되었습니다."
+              data:
+                id: 1
+                content: "시스템 로그인이 안 되는 문제가 있습니다."
+                training_course: "데이터 분석 스쿨 4기"
+                username: "홍길동"
+                date: "2025-01-15"
+                created_at: "2025-01-15T10:30:00"
+                resolved: false
+      400:
+        description: 필수 필드 누락
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "이슈 내용, 교육 과정, 작성자는 필수 입력 항목입니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
+      500:
+        description: 서버 오류
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "이슈 생성 중 오류가 발생했습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
+    """
+    try:
+        validated_data = IssueSerializer.deserialize_issue_create(request.json)
+        issue_data = IssueService.create_issue(validated_data)
+        try:
+            notifier = SlackNotifier()
+            message = (
+                f"*새로운 이슈가 등록되었습니다!*\n"
+                f">*과정:* {issue_data.get('training_course')}\n"
+                f">*내용:* {issue_data['content']}\n"
+                f">*작성자:* {issue_data.get('username')}"
+            )
+            notifier.send_notification(message, "issue")
+        except Exception as e:
+            logger.error(f"Slack notification failed: {str(e)}")
+
+        return json_response(
+            data=issue_data,
+            message="이슈가 성공적으로 생성되었습니다.",
+            status_code=201,
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating issue: {str(e)}", exc_info=True)
+        return error_json_response("이슈 생성 중 오류가 발생했습니다.", status_code=500)
+
+
+@issues_bp.route("/issues", methods=["GET"])
+def get_issues():
+    """
+    해결되지 않은 이슈 목록 조회 API
+    ---
+    tags:
+      - Issues
+    summary: 해결되지 않은 이슈 목록을 조회합니다
+    description: |
+      해결되지 않은 이슈들의 목록을 조회합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/issues', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
+    responses:
+      200:
+        description: 해결되지 않은 이슈 목록 반환
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "이슈 목록 조회 성공"
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  training_course:
+                    type: string
+                    example: "데이터 분석 스쿨 4기"
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        content:
+                          type: string
+                          example: "시스템 로그인이 안 되는 문제가 있습니다."
+                        training_course:
+                          type: string
+                          example: "데이터 분석 스쿨 4기"
+                        username:
+                          type: string
+                          example: "홍길동"
+                        date:
+                          type: string
+                          format: date
+                          example: "2025-01-15"
+                        created_at:
+                          type: string
+                          format: date-time
+                          example: "2025-01-15T10:30:00"
+                        resolved:
+                          type: boolean
+                          example: false
+                        comments:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                                example: 1
+                              comment:
+                                type: string
+                                example: "이 문제는 이미 확인했습니다."
+                              created_by:
+                                type: string
+                                example: "관리자"
+                              created_at:
+                                type: string
+                                format: date-time
+                                example: "2025-01-15T11:00:00"
+        examples:
+          application/json:
+            summary: 이슈 목록 조회 성공 응답
+            value:
+              success: true
+              message: "이슈 목록 조회 성공"
+              data:
+                - training_course: "데이터 분석 스쿨 4기"
+                  issues:
+                    - id: 1
+                      content: "시스템 로그인이 안 되는 문제가 있습니다."
+                      training_course: "데이터 분석 스쿨 4기"
+                      username: "홍길동"
+                      date: "2025-01-15"
+                      created_at: "2025-01-15T10:30:00"
+                      resolved: false
+                      comments:
+                        - id: 1
+                          comment: "이 문제는 이미 확인했습니다."
+                          created_by: "관리자"
+                          created_at: "2025-01-15T11:00:00"
+                - training_course: "웹 개발 스쿨 3기"
+                  issues:
+                    - id: 2
+                      content: "과제 제출 시스템 오류"
+                      training_course: "웹 개발 스쿨 3기"
+                      username: "김철수"
+                      date: "2025-01-14"
+                      created_at: "2025-01-14T15:20:00"
+                      resolved: false
+                      comments: []
+      500:
+        description: 이슈 목록 조회 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "이슈 목록을 불러오는 중 오류 발생"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
+    """
+    try:
+        response_data = IssueService.get_unresolved_issues()
+        serialized_response_data = IssueSerializer.serialize_issues(response_data)
+
+        return json_response(
+            data=serialized_response_data, message="이슈 목록 조회 성공", status_code=200
+        )
+
+    except Exception as e:
+        logger.error("Error retrieving issues", exc_info=True)
+        return error_json_response("이슈 목록을 불러오는 중 오류 발생", status_code=500)
+
+
+# 이슈에 대한 댓글 달기
+@issues_bp.route("/issues/comments", methods=["POST"])
+@handle_serialization_errors
+def add_comment():
+    """
+    이슈 댓글 추가 API
+    ---
+    tags:
+      - Issues
+    summary: 이슈에 댓글 추가
+    description: |
+      특정 이슈에 댓글을 추가합니다. 댓글 등록 후 Slack 알림이 전송됩니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/issues/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          issue_id: 1,
+          comment: '이 문제는 이미 확인했습니다. 곧 해결하겠습니다.',
+          created_by: '관리자'
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - issue_id
+            - comment
+            - created_by
           properties:
             issue_id:
               type: integer
+              description: 이슈 ID
+              example: 1
+            comment:
+              type: string
+              description: 댓글 내용
+              example: "이 문제는 이미 확인했습니다. 곧 해결하겠습니다."
+            created_by:
+              type: string
+              description: 작성자명
+              example: "관리자"
+    responses:
+      201:
+        description: 댓글 추가 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "댓글이 등록되었습니다."
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  example: 1
+                issue_id:
+                  type: integer
+                  example: 1
+                comment:
+                  type: string
+                  example: "이 문제는 이미 확인했습니다. 곧 해결하겠습니다."
+                created_by:
+                  type: string
+                  example: "관리자"
+                created_at:
+                  type: string
+                  format: date-time
+                  example: "2025-01-15T11:00:00"
+        examples:
+          application/json:
+            summary: 댓글 추가 성공 응답
+            value:
+              success: true
+              message: "댓글이 등록되었습니다."
+              data:
+                id: 1
+                issue_id: 1
+                comment: "이 문제는 이미 확인했습니다. 곧 해결하겠습니다."
+                created_by: "관리자"
+                created_at: "2025-01-15T11:00:00"
+      400:
+        description: 필수 데이터 누락
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "이슈 ID, 댓글 내용, 작성자는 필수 입력 항목입니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
+      404:
+        description: 이슈를 찾을 수 없음
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "해당 이슈를 찾을 수 없습니다."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 404
+      500:
+        description: 서버 오류
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "댓글 등록 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
+    """
+    try:
+        validated_data = IssueSerializer.deserialize_issue_comment_create(request.json)
+        comment = IssueService.add_comment(validated_data)
+        serialized_comment = IssueSerializer.serialize_issue_comment(comment)
+
+        # 댓글 등록 알림
+        notifier = SlackNotifier()
+        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n댓글: {serialized_comment['comment']}"
+        notifier.send_notification(notification_message, channel_type="comment")
+
+        return json_response(
+            data=serialized_comment, message="댓글이 등록되었습니다.", status_code=201
+        )
+    except Exception as e:
+        logger.error(f"댓글 등록 중 오류: {str(e)}")
+        return error_json_response("댓글 등록 실패", status_code=500)
+
+
+# 이슈에 대한 댓글 조회
+@issues_bp.route("/issues/comments", methods=["GET"])
+def get_issue_comments():
+    """
+    이슈사항의 댓글 조회 API
+    ---
+    tags:
+      - Issues
+    summary: 특정 이슈에 대한 댓글 목록을 조회합니다
+    description: |
+      특정 이슈에 등록된 댓글들의 목록을 조회합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/issues/comments?issue_id=1', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
+    parameters:
+      - name: issue_id
+        in: query
+        type: integer
+        required: true
+        description: "조회할 이슈 ID"
+        example: 1
+    responses:
+      200:
+        description: 이슈사항의 댓글 목록 반환
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "댓글 조회 성공"
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  issue_id:
+                    type: integer
+                    example: 1
+                  comment:
+                    type: string
+                    example: "이 문제는 이미 확인했습니다. 곧 해결하겠습니다."
+                  created_by:
+                    type: string
+                    example: "관리자"
+                  created_at:
+                    type: string
+                    format: date-time
+                    example: "2025-01-15T11:00:00"
+        examples:
+          application/json:
+            summary: 댓글 목록 조회 성공 응답
+            value:
+              success: true
+              message: "댓글 조회 성공"
+              data:
+                - id: 1
+                  issue_id: 1
+                  comment: "이 문제는 이미 확인했습니다. 곧 해결하겠습니다."
+                  created_by: "관리자"
+                  created_at: "2025-01-15T11:00:00"
+                - id: 2
+                  issue_id: 1
+                  comment: "해결되었습니다. 확인해보세요."
+                  created_by: "시스템관리자"
+                  created_at: "2025-01-15T14:30:00"
+      500:
+        description: 댓글 조회 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "댓글 조회 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
+    """
+    try:
+        validated_data = IssueSerializer.deserialize_issue_comment_get(request.args)
+        comments = IssueService.get_issue_comments(validated_data)
+        serialized_comments = IssueSerializer.serialize_issue_comments(comments)
+
+        return json_response(
+            data=serialized_comments, message="댓글 조회 성공", status_code=200
+        )
+
+    except Exception as e:
+        logger.error("Error retrieving issue comments", exc_info=True)
+        return error_json_response("댓글 조회 실패", status_code=500)
+
+
+# 해결된 이슈 클릭
+@issues_bp.route("/issues/resolve", methods=["POST"])
+@handle_serialization_errors
+def resolve_issue():
+    """
+    이슈 해결 API
+    ---
+    tags:
+      - Issues
+    summary: 특정 이슈를 해결 처리합니다
+    description: |
+      특정 이슈를 해결 처리합니다. 해결된 이슈는 목록에서 제외됩니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/issues/resolve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          issue_id: 1
+        })
+      });
+      
+      const result = await response.json();
+      console.log(result);
+      ```
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - issue_id
+          properties:
+            issue_id:
+              type: integer
+              description: 해결할 이슈 ID
               example: 1
     responses:
       200:
         description: 이슈 해결 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "이슈가 해결되었습니다."
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  example: 1
+                content:
+                  type: string
+                  example: "시스템 로그인이 안 되는 문제가 있습니다."
+                training_course:
+                  type: string
+                  example: "데이터 분석 스쿨 4기"
+                username:
+                  type: string
+                  example: "홍길동"
+                date:
+                  type: string
+                  format: date
+                  example: "2025-01-15"
+                created_at:
+                  type: string
+                  format: date-time
+                  example: "2025-01-15T10:30:00"
+                resolved:
+                  type: boolean
+                  example: true
+        examples:
+          application/json:
+            summary: 이슈 해결 성공 응답
+            value:
+              success: true
+              message: "이슈가 해결되었습니다."
+              data:
+                id: 1
+                content: "시스템 로그인이 안 되는 문제가 있습니다."
+                training_course: "데이터 분석 스쿨 4기"
+                username: "홍길동"
+                date: "2025-01-15"
+                created_at: "2025-01-15T10:30:00"
+                resolved: true
       400:
         description: 요청 데이터 오류
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "이슈 ID를 입력해주세요."
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 400
       500:
         description: 이슈 해결 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "이슈 해결 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        data = request.json
-        issue_id = data.get('issue_id')
+        validated_data = IssueSerializer.deserialize_issue_resolve(request.json)
+        issue = IssueService.resolve_issue(validated_data)
+        serialized_issue = IssueSerializer.serialize_issue(issue)
 
-        if not issue_id:
-            return jsonify({"success": False, "message": "이슈 ID가 필요합니다."}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE issues SET resolved = TRUE WHERE id = %s",
-            (issue_id,)
+        return json_response(
+            data=serialized_issue, message="이슈가 해결되었습니다.", status_code=200
         )
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "message": "이슈가 해결되었습니다."}), 200
     except Exception as e:
-        logging.error("Error resolving issue", exc_info=True)
-        return jsonify({"success": False, "message": "이슈 해결 실패"}), 500
+        logger.error("Error resolving issue", exc_info=True)
+        return error_json_response("이슈 해결 실패", status_code=500)
+
 
 # 이슈사항 전체 다운로드
-@issues_bp.route('/issues/download', methods=['GET'])
+@issues_bp.route("/issues/download", methods=["GET"])
 def download_issues():
     """
     이슈사항을 Excel 파일로 다운로드하는 API
     ---
     tags:
       - Issues
+    summary: 모든 이슈사항을 Excel 파일로 다운로드
+    description: |
+      모든 이슈사항을 Excel 파일로 다운로드합니다.
+      
+      ### 사용 예시
+      ```javascript
+      const response = await fetch('/issues/download', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      // 파일 다운로드 처리
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '이슈사항.xlsx';
+      a.click();
+      ```
     responses:
       200:
         description: 이슈사항을 Excel 파일로 다운로드
+        schema:
+          type: file
+          format: binary
+        headers:
+          Content-Disposition:
+            description: 파일 다운로드 헤더
+            schema:
+              type: string
+              example: "attachment; filename=이슈사항.xlsx"
+          Content-Type:
+            description: Excel 파일 타입
+            schema:
+              type: string
+              example: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       500:
         description: 이슈사항 다운로드 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "이슈 다운로드 실패"
+            details:
+              type: object
+              example: null
+            status_code:
+              type: integer
+              example: 500
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        all_issues = IssueService.get_all_issues()
+        serialized_issues = IssueSerializer.serialize_issues(all_issues)
 
-        cursor.execute("SELECT id, content, date, training_course, created_at, resolved FROM issues")
-        issues = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        # Excel 생성을 위한 데이터 변환
+        issues = [
+            (
+                issue["id"],
+                issue["content"],
+                issue.get("date"),
+                issue["training_course"],
+                issue["created_at"],
+                issue["resolved"],
+            )
+            for issue in serialized_issues
+        ]
 
         # DataFrame 생성
         columns = ["ID", "이슈 내용", "날짜", "훈련 과정", "생성일", "해결됨"]
@@ -329,7 +842,7 @@ def download_issues():
 
         # Excel 파일 생성
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
             df.to_excel(writer, index=False, sheet_name="이슈사항")
         output.seek(0)
 
@@ -337,11 +850,11 @@ def download_issues():
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name="이슈사항.xlsx"
+            download_name="이슈사항.xlsx",
         )
     except Exception as e:
-        logging.error("이슈사항 다운로드 실패", exc_info=True)
-        return jsonify({"success": False, "message": "이슈 다운로드 실패"}), 500
+        logger.error("이슈사항 다운로드 실패", exc_info=True)
+        return error_json_response("이슈 다운로드 실패", status_code=500)
 
 
 # @issues_bp.route('/remarks', methods=['POST'])
