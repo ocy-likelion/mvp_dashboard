@@ -37,21 +37,23 @@ def front_for_pro():
     responses:
       200:
         description: 대시보드 HTML 페이지 반환
-        schema:
-          type: string
-          format: html
-        examples:
+        content:
           text/html:
-            summary: 대시보드 HTML 페이지
-            value: |
+            schema:
+              type: string
+            example: |
               <!DOCTYPE html>
               <html>
               <head>
                 <title>업무 관리 대시보드</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
               </head>
               <body>
                 <h1>업무 관리 대시보드</h1>
-                <!-- 대시보드 내용 -->
+                <div id="dashboard-content">
+                  <!-- 대시보드 내용 -->
+                </div>
               </body>
               </html>
       302:
@@ -62,6 +64,11 @@ def front_for_pro():
             schema:
               type: string
               example: "/login"
+          Content-Type:
+            description: 응답 콘텐츠 타입
+            schema:
+              type: string
+              example: "text/html; charset=utf-8"
     """
     if "user" not in session:
         return redirect(url_for("auth.login"))
@@ -102,21 +109,23 @@ def admin():
     responses:
       200:
         description: 관리자 대시보드 HTML 페이지 반환
-        schema:
-          type: string
-          format: html
-        examples:
+        content:
           text/html:
-            summary: 관리자 대시보드 HTML 페이지
-            value: |
+            schema:
+              type: string
+            example: |
               <!DOCTYPE html>
               <html>
               <head>
                 <title>관리자 대시보드</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
               </head>
               <body>
                 <h1>관리자 대시보드</h1>
-                <!-- 관리자 대시보드 내용 -->
+                <div id="admin-dashboard-content">
+                  <!-- 관리자 대시보드 내용 -->
+                </div>
               </body>
               </html>
       302:
@@ -127,6 +136,11 @@ def admin():
             schema:
               type: string
               example: "/login"
+          Content-Type:
+            description: 응답 콘텐츠 타입
+            schema:
+              type: string
+              example: "text/html; charset=utf-8"
     """
     if "user" not in session:
         return redirect(url_for("auth.login"))
