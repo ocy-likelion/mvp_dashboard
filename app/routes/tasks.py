@@ -57,7 +57,7 @@ def get_tasks():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "업무 체크리스트 조회 성공"
             data:
@@ -74,39 +74,34 @@ def get_tasks():
                   task_category:
                     type: string
                     example: "일반"
-                  is_checked:
-                    type: boolean
-                    example: true
-                  training_course:
+                  task_period:
                     type: string
-                    example: "데이터 분석 스쿨 4기"
-                  date:
+                    example: "일일"
+                  guide:
                     type: string
-                    format: date
-                    example: "2025-01-15"
-            status_code:
-              type: integer
-              example: 200
+                    example: "매일 출석을 체크합니다"
+                  due:
+                    type: integer
+                    example: 1
         examples:
           application/json:
             summary: 업무 체크리스트 조회 성공 응답
             value:
               success: true
-              error: "업무 체크리스트 조회 성공"
+              message: "업무 체크리스트 조회 성공"
               data:
                 - id: 1
                   task_name: "출석 체크"
                   task_category: "일반"
-                  is_checked: true
-                  training_course: "데이터 분석 스쿨 4기"
-                  date: "2025-01-15"
+                  task_period: "일일"
+                  guide: "매일 출석을 체크합니다"
+                  due: 1
                 - id: 2
                   task_name: "과제 제출"
                   task_category: "개발"
-                  is_checked: false
-                  training_course: "데이터 분석 스쿨 4기"
-                  date: "2025-01-15"
-              status_code: 200
+                  task_period: "주간"
+                  guide: "주간 과제를 제출합니다"
+                  due: 7
       500:
         description: 서버 오류로 인해 업무 체크리스트 조회 실패
         schema:
@@ -118,6 +113,9 @@ def get_tasks():
             error:
               type: string
               example: "업무 체크리스트 조회 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -220,23 +218,19 @@ def save_tasks():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "체크리스트가 성공적으로 저장/업데이트되었습니다!"
             data:
               type: null
               example: null
-            status_code:
-              type: integer
-              example: 201
         examples:
           application/json:
             summary: 체크리스트 저장 성공 응답
             value:
               success: true
-              error: "체크리스트가 성공적으로 저장/업데이트되었습니다!"
+              message: "체크리스트가 성공적으로 저장/업데이트되었습니다!"
               data: null
-              status_code: 201
       400:
         description: 요청 데이터 없음
         schema:
@@ -248,6 +242,9 @@ def save_tasks():
             error:
               type: string
               example: "요청 데이터가 없습니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -262,6 +259,9 @@ def save_tasks():
             error:
               type: string
               example: "체크리스트 저장 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -360,7 +360,7 @@ def update_tasks():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "체크리스트가 성공적으로 업데이트되었습니다!"
             data:
@@ -372,19 +372,15 @@ def update_tasks():
                 training_course:
                   type: string
                   example: "데이터 분석 스쿨 4기"
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 체크리스트 업데이트 성공 응답
             value:
               success: true
-              error: "체크리스트가 성공적으로 업데이트되었습니다!"
+              message: "체크리스트가 성공적으로 업데이트되었습니다!"
               data:
                 updated_count: 2
                 training_course: "데이터 분석 스쿨 4기"
-              status_code: 200
       404:
         description: 업데이트할 체크리스트가 존재하지 않음
         schema:
@@ -396,6 +392,9 @@ def update_tasks():
             error:
               type: string
               example: "업데이트할 체크리스트가 존재하지 않습니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 404
@@ -410,6 +409,9 @@ def update_tasks():
             error:
               type: string
               example: "체크리스트 업데이트 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -465,7 +467,7 @@ def get_irregular_tasks():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "비정기 업무 체크리스트 조회 성공"
             data:
@@ -485,31 +487,27 @@ def get_irregular_tasks():
                   training_course:
                     type: string
                     example: "데이터 분석 스쿨 4기"
-                  last_updated:
+                  checked_date:
                     type: string
                     format: date-time
                     example: "2025-01-15T10:30:00"
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 비정기 업무 체크리스트 조회 성공 응답
             value:
               success: true
-              error: "비정기 업무 체크리스트 조회 성공"
+              message: "비정기 업무 체크리스트 조회 성공"
               data:
                 - id: 1
                   task_name: "프로젝트 발표"
                   is_checked: false
                   training_course: "데이터 분석 스쿨 4기"
-                  last_updated: "2025-01-15T10:30:00"
+                  checked_date: "2025-01-15T10:30:00"
                 - id: 2
                   task_name: "포트폴리오 작성"
                   is_checked: true
                   training_course: "데이터 분석 스쿨 4기"
-                  last_updated: "2025-01-14T15:20:00"
-              status_code: 200
+                  checked_date: "2025-01-14T15:20:00"
       500:
         description: 비정기 업무 조회 실패
         schema:
@@ -521,6 +519,9 @@ def get_irregular_tasks():
             error:
               type: string
               example: "비정기 업무 조회 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -614,23 +615,19 @@ def save_irregular_tasks():
             success:
               type: boolean
               example: true
-            error:
+            message:
               type: string
               example: "비정기 업무 체크리스트가 저장되었습니다!"
             data:
               type: null
               example: null
-            status_code:
-              type: integer
-              example: 201
         examples:
           application/json:
             summary: 비정기 업무 체크리스트 저장 성공 응답
             value:
               success: true
-              error: "비정기 업무 체크리스트가 저장되었습니다!"
+              message: "비정기 업무 체크리스트가 저장되었습니다!"
               data: null
-              status_code: 201
       500:
         description: 비정기 업무 체크리스트 저장 실패
         schema:
@@ -642,6 +639,9 @@ def save_irregular_tasks():
             error:
               type: string
               example: "비정기 업무 체크리스트 저장 실패"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
