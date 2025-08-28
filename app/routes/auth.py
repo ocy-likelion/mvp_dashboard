@@ -88,9 +88,6 @@ def login():
                 role:
                   type: string
                   example: "user"
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 로그인 성공 응답
@@ -102,7 +99,6 @@ def login():
                 username: "user123"
                 name: "홍길동"
                 role: "user"
-              status_code: 200
       400:
         description: 필수 데이터 누락 또는 유효성 검사 실패
         schema:
@@ -114,6 +110,9 @@ def login():
             error:
               type: string
               example: "사용자명과 비밀번호를 입력해주세요."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -128,6 +127,9 @@ def login():
             error:
               type: string
               example: "잘못된 사용자명 또는 비밀번호입니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 401
@@ -142,6 +144,9 @@ def login():
             error:
               type: string
               example: "서버 오류 발생"
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
@@ -202,9 +207,6 @@ def logout():
             data:
               type: null
               example: null
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 로그아웃 성공 응답
@@ -212,7 +214,6 @@ def logout():
               success: true
               message: "로그아웃 완료!"
               data: null
-              status_code: 200
     """
     session.pop("user", None)
     return json_response(data=None, message="로그아웃 완료!", status_code=200)
@@ -269,9 +270,6 @@ def get_current_user():
                     role:
                       type: string
                       example: "user"
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 사용자 정보 조회 성공 응답
@@ -284,7 +282,6 @@ def get_current_user():
                   username: "user123"
                   name: "홍길동"
                   role: "user"
-              status_code: 200
       401:
         description: 로그인 필요
         schema:
@@ -296,6 +293,9 @@ def get_current_user():
             error:
               type: string
               example: "로그인이 필요합니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 401
@@ -373,9 +373,6 @@ def change_password():
             data:
               type: null
               example: null
-            status_code:
-              type: integer
-              example: 200
         examples:
           application/json:
             summary: 비밀번호 변경 성공 응답
@@ -383,7 +380,6 @@ def change_password():
               success: true
               message: "비밀번호가 성공적으로 변경되었습니다."
               data: null
-              status_code: 200
       400:
         description: 필수 데이터 누락 또는 유효성 검사 실패
         schema:
@@ -395,6 +391,9 @@ def change_password():
             error:
               type: string
               example: "모든 필드를 입력해주세요."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 400
@@ -409,6 +408,9 @@ def change_password():
             error:
               type: string
               example: "현재 비밀번호가 일치하지 않습니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 401
@@ -423,6 +425,9 @@ def change_password():
             error:
               type: string
               example: "비밀번호 변경 중 오류가 발생했습니다."
+            details:
+              type: object
+              example: null
             status_code:
               type: integer
               example: 500
