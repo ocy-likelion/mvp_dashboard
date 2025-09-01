@@ -1,5 +1,6 @@
 from flask import Blueprint, request, send_file
 import logging
+from marshmallow import ValidationError
 
 from app.serializers import (
     AttendanceSerializer,
@@ -322,7 +323,6 @@ def get_attendance():
 
 
 @attendance_bp.route("/attendance", methods=["POST"])
-@handle_serialization_errors
 def save_attendance():
     """
     출퇴근 기록 저장 API
@@ -454,7 +454,7 @@ def save_attendance():
                 check_out_time: "18:00"
                 daily_log: true
       400:
-        description: 필수 데이터 누락
+        description: 데이터 검증 실패 또는 필수 데이터 누락
         schema:
           type: object
           properties:
@@ -463,10 +463,13 @@ def save_attendance():
               example: false
             error:
               type: string
-              example: "날짜, 강사 정보, 훈련 과정, 출퇴근 시간은 필수 입력 항목입니다."
+              example: "데이터 검증 실패"
             details:
               type: object
-              example: null
+              description: 구체적인 검증 오류 정보
+              example:
+                date: ["날짜는 필수 입력 항목입니다."]
+                check_in_time: ["출근 시간은 HH:MM 형식이어야 합니다."]
             status_code:
               type: integer
               example: 400
@@ -489,10 +492,26 @@ def save_attendance():
               example: 500
     """
     try:
-        validated_data = AttendanceSerializer.deserialize_attendance_create(
-            request.json
-        )
-        attendance_data = AttendanceService.create_attendance(validated_data)
+        try:
+            validated_data = AttendanceSerializer.deserialize_attendance_create(
+                request.json
+            )
+        except ValidationError as e:
+            logger.warning(f"Validation error: {e.messages}")
+            return error_json_response(
+                error="데이터 검증 실패", 
+                details=e.messages, 
+                status_code=400
+            )
+        try:
+            attendance_data = AttendanceService.create_attendance(validated_data)
+        except ValueError as e:
+            logger.warning(f"Business logic error: {str(e)}")
+            return error_json_response(
+                error="출퇴근 기록 저장 실패", 
+                details={"business_error": str(e)}, 
+                status_code=400
+            )
 
         return json_response(
             data=attendance_data,
@@ -500,5 +519,5 @@ def save_attendance():
             status_code=201,
         )
     except Exception as e:
-        logger.error("Error saving attendance", exc_info=True)
+        logger.error("Unexpected error saving attendance", exc_info=True)
         return error_json_response("출퇴근 기록 저장 실패", status_code=500)
