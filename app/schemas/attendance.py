@@ -16,8 +16,8 @@ class AttendanceSchema(SQLAlchemyAutoSchema):
         include_fk = True
 
     date = fields.Date(required=True)  # nullable=False
-    check_in_time = fields.Time()
-    check_out_time = fields.Time()
+    check_in = fields.Time()
+    check_out = fields.Time()
 
     @validates("date")
     def validate_date(self, value):
