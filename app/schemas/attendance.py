@@ -32,8 +32,8 @@ class AttendanceCreateSchema(Schema):
     instructor = fields.Str(required=True, error_messages={"required": "강사 ID는 필수 입력 항목입니다."})
     instructor_name = fields.Str(required=True, error_messages={"required": "강사명은 필수 입력 항목입니다."})
     training_course = fields.Str(required=True, error_messages={"required": "훈련 과정명은 필수 입력 항목입니다."})
-    check_in_time = fields.Str(required=True, error_messages={"required": "출근 시간은 필수 입력 항목입니다."})
-    check_out_time = fields.Str(required=True, error_messages={"required": "퇴근 시간은 필수 입력 항목입니다."})
+    check_in = fields.Str(required=True, error_messages={"required": "출근 시간은 필수 입력 항목입니다."})
+    check_out = fields.Str(required=True, error_messages={"required": "퇴근 시간은 필수 입력 항목입니다."})
     daily_log = fields.Bool(missing=False)
 
     @validates("date")
@@ -41,7 +41,7 @@ class AttendanceCreateSchema(Schema):
         if value > datetime.now().date():
             raise ValidationError("미래 날짜는 입력할 수 없습니다.")
 
-    @validates("check_in_time")
+    @validates("check_in")
     def validate_check_in_time(self, value):
         if value:
             try:
@@ -49,7 +49,7 @@ class AttendanceCreateSchema(Schema):
             except ValueError:
                 raise ValidationError("출근 시간은 HH:MM 형식이어야 합니다.")
 
-    @validates("check_out_time")
+    @validates("check_out")
     def validate_check_out_time(self, value):
         if value:
             try:
@@ -61,10 +61,10 @@ class AttendanceCreateSchema(Schema):
 class AttendanceTimeSchema(Schema):
     """출퇴근 시간 변환용 스키마"""
 
-    check_in_time = fields.Str()
-    check_out_time = fields.Str()
+    check_in = fields.Str()
+    check_out = fields.Str()
 
-    @validates("check_in_time")
+    @validates("check_in")
     def validate_check_in_time(self, value):
         if value:
             try:
@@ -72,7 +72,7 @@ class AttendanceTimeSchema(Schema):
             except ValueError:
                 raise ValidationError("출근 시간은 HH:MM 형식이어야 합니다.")
 
-    @validates("check_out_time")
+    @validates("check_out")
     def validate_check_out_time(self, value):
         if value:
             try:

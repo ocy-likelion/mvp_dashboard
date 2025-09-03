@@ -46,10 +46,9 @@ class IssueSchema(SQLAlchemyAutoSchema):
 class IssueCreateSchema(Schema):
     """이슈 생성용 스키마"""
 
-    content = fields.Str(required=True)  # nullable=False
+    issue = fields.Str(required=True)  # content → issue로 변경
     training_course = fields.Str()
     username = fields.Str()
-    created_by = fields.Str()
     date = fields.Date()
 
 
@@ -65,13 +64,6 @@ class IssueResolveSchema(Schema):
     """이슈 해결용 스키마"""
 
     issue_id = fields.Int(required=True)
-    resolved_by = fields.Str()
-    resolution_comment = fields.Str()
-
-    @validates("issue_id")
-    def validate_issue_id(self, value):
-        if value <= 0:
-            raise ValidationError("유효한 이슈 ID를 입력해주세요.")
 
 
 class IssueCommentFilterSchema(Schema):

@@ -333,6 +333,9 @@ def save_attendance():
     description: |
       새로운 출퇴근 기록을 저장합니다.
       
+      ### API 명세
+      **POST** `/attendance`
+      
       ### 사용 예시
       ```javascript
       const response = await fetch('/attendance', {
@@ -346,8 +349,8 @@ def save_attendance():
           instructor: '1',
           instructor_name: '홍길동',
           training_course: '데이터 분석 스쿨 4기',
-          check_in_time: '09:00',
-          check_out_time: '18:00',
+          check_in: '09:00',
+          check_out: '18:00',
           daily_log: true
         })
       });
@@ -366,8 +369,8 @@ def save_attendance():
             - instructor
             - instructor_name
             - training_course
-            - check_in_time
-            - check_out_time
+            - check_in
+            - check_out
           properties:
             date:
               type: string
@@ -386,11 +389,11 @@ def save_attendance():
               type: string
               description: 훈련 과정명
               example: "데이터 분석 스쿨 4기"
-            check_in_time:
+            check_in:
               type: string
               description: 출근 시간 (HH:MM 형식)
               example: "09:00"
-            check_out_time:
+            check_out:
               type: string
               description: 퇴근 시간 (HH:MM 형식)
               example: "18:00"
@@ -409,7 +412,7 @@ def save_attendance():
               example: true
             message:
               type: string
-              example: "출퇴근 기록 저장 성공!"
+              example: "출퇴근 기록이 성공적으로 생성되었습니다."
             data:
               type: object
               properties:
@@ -429,10 +432,10 @@ def save_attendance():
                 training_course:
                   type: string
                   example: "데이터 분석 스쿨 4기"
-                check_in_time:
+                check_in:
                   type: string
                   example: "09:00"
-                check_out_time:
+                check_out:
                   type: string
                   example: "18:00"
                 daily_log:
@@ -440,84 +443,31 @@ def save_attendance():
                   example: true
         examples:
           application/json:
-            summary: 출퇴근 기록 저장 성공 응답
+            summary: 출퇴근 기록 생성 성공 응답
             value:
               success: true
-              message: "출퇴근 기록 저장 성공!"
+              message: "출퇴근 기록이 성공적으로 생성되었습니다."
               data:
                 id: 1
                 date: "2025-01-15"
                 instructor: "1"
                 instructor_name: "홍길동"
                 training_course: "데이터 분석 스쿨 4기"
-                check_in_time: "09:00"
-                check_out_time: "18:00"
+                check_in: "09:00"
+                check_out: "18:00"
                 daily_log: true
-      400:
-        description: 데이터 검증 실패 또는 필수 데이터 누락
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: false
-            error:
-              type: string
-              example: "데이터 검증 실패"
-            details:
-              type: object
-              description: 구체적인 검증 오류 정보
-              example:
-                date: ["날짜는 필수 입력 항목입니다."]
-                check_in_time: ["출근 시간은 HH:MM 형식이어야 합니다."]
-            status_code:
-              type: integer
-              example: 400
-      500:
-        description: 출퇴근 기록 저장 실패
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: false
-            error:
-              type: string
-              example: "출퇴근 기록 저장 실패"
-            details:
-              type: object
-              example: null
-            status_code:
-              type: integer
-              example: 500
     """
     try:
-        try:
-            validated_data = AttendanceSerializer.deserialize_attendance_create(
-                request.json
-            )
-        except ValidationError as e:
-            logger.warning(f"Validation error: {e.messages}")
-            return error_json_response(
-                error="데이터 검증 실패", 
-                details=e.messages, 
-                status_code=400
-            )
-        try:
-            attendance_data = AttendanceService.create_attendance(validated_data)
-        except ValueError as e:
-            logger.warning(f"Business logic error: {str(e)}")
-            return error_json_response(
-                error="출퇴근 기록 저장 실패", 
-                details={"business_error": str(e)}, 
-                status_code=400
-            )
-
+        validated_data = AttendanceSerializer.deserialize_attendance_create(
+            request.json
+        )
+        attendance_data = AttendanceService.create_attendance(validated_data)
+        
         return json_response(
             data=attendance_data,
-            message="출퇴근 기록 저장 성공!",
+            message="출퇴근 기록이 성공적으로 생성되었습니다.",
             status_code=201,
         )
     except Exception as e:
-        logger.error("Unexpected error saving attendance", exc_info=True)
-        return error_json_response("출퇴근 기록 저장 실패", status_code=500)
+        logger.error("출퇴근 기록 생성 오류", exc_info=True)
+        return error_json_response("출퇴근 기록 생성 실패", status_code=500)

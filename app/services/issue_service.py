@@ -22,7 +22,7 @@ class IssueService(BaseService):
             with db_session() as session:
                 # 이슈 생성
                 issue = Issue(
-                    content=issue_data["content"],
+                    content=issue_data["issue"],  # content → issue로 변경
                     training_course=issue_data.get("training_course"),
                     username=issue_data.get("username"),
                     created_by=issue_data.get("created_by", issue_data.get("username")),
@@ -35,7 +35,7 @@ class IssueService(BaseService):
                 # 딕셔너리 형태로 반환
                 return {
                     "id": issue.id,
-                    "content": issue.content,
+                    "issue": issue.content,  # content → issue로 변경
                     "training_course": issue.training_course,
                     "username": issue.username,
                     "created_by": issue.created_by,

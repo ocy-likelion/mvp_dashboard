@@ -40,7 +40,7 @@ class UncheckedDescriptionSchema(SQLAlchemyAutoSchema):
 class UncheckedDescriptionCreateSchema(Schema):
     """미해결 항목 생성용 스키마"""
 
-    content = fields.Str(required=True)  # nullable=False
+    description = fields.Str(required=True)  # content → description으로 변경
     training_course = fields.Str()
     user_id = fields.Int()
     username = fields.Str()
@@ -48,8 +48,8 @@ class UncheckedDescriptionCreateSchema(Schema):
     task_id = fields.Int()
     created_by = fields.Str()
 
-    @validates("content")
-    def validate_content(self, value):
+    @validates("description")
+    def validate_description(self, value):
         if not value.strip():
             raise ValidationError("미해결 항목 내용을 입력해주세요.")
 

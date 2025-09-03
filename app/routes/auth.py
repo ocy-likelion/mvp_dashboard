@@ -315,7 +315,10 @@ def change_password():
       - Authentication
     summary: 사용자 비밀번호 변경
     description: |
-      현재 비밀번호를 확인한 후 새로운 비밀번호로 변경합니다.
+      현재 비밀번호를 확인하고 새로운 비밀번호로 변경합니다.
+      
+      ### API 명세
+      **POST** `/user/change-password`
       
       ### 사용 예시
       ```javascript
@@ -327,8 +330,8 @@ def change_password():
         credentials: 'include',
         body: JSON.stringify({
           username: 'user123',
-          current_password: 'current123',
-          new_password: 'new123'
+          current_password: 'oldpassword123',
+          new_password: 'newpassword123'
         })
       });
       
@@ -353,11 +356,11 @@ def change_password():
             current_password:
               type: string
               description: 현재 비밀번호
-              example: "current123"
+              example: "oldpassword123"
             new_password:
               type: string
               description: 새로운 비밀번호
-              example: "new123"
+              example: "newpassword123"
     responses:
       200:
         description: 비밀번호 변경 성공
@@ -370,16 +373,12 @@ def change_password():
             message:
               type: string
               example: "비밀번호가 성공적으로 변경되었습니다."
-            data:
-              type: null
-              example: null
         examples:
           application/json:
             summary: 비밀번호 변경 성공 응답
             value:
               success: true
               message: "비밀번호가 성공적으로 변경되었습니다."
-              data: null
       400:
         description: 필수 데이터 누락 또는 유효성 검사 실패
         schema:
