@@ -26,6 +26,9 @@ def add_notice():
     description: |
       새로운 공지사항을 생성합니다. 생성 후 Slack 알림이 자동으로 전송됩니다.
       
+      ### API 명세
+      **POST** `/notices`
+      
       ### 사용 예시
       ```javascript
       const response = await fetch('/notices', {
@@ -37,7 +40,7 @@ def add_notice():
         body: JSON.stringify({
           title: '중요 공지사항',
           content: '내일 오후 2시에 전체 회의가 있습니다.',
-          created_by: '관리자',
+          username: '관리자',
           type: '공지사항'
         })
       });
@@ -54,7 +57,7 @@ def add_notice():
           required:
             - title
             - content
-            - created_by
+            - username
           properties:
             title:
               type: string
@@ -64,7 +67,7 @@ def add_notice():
               type: string
               description: 공지사항 내용
               example: "내일 오후 2시에 전체 회의가 있습니다."
-            created_by:
+            username:
               type: string
               description: 작성자명
               example: "관리자"
@@ -96,7 +99,7 @@ def add_notice():
                 content:
                   type: string
                   example: "내일 오후 2시에 전체 회의가 있습니다."
-                created_by:
+                username:
                   type: string
                   example: "관리자"
                 type:
@@ -116,7 +119,7 @@ def add_notice():
                 id: 1
                 title: "중요 공지사항"
                 content: "내일 오후 2시에 전체 회의가 있습니다."
-                created_by: "관리자"
+                username: "관리자"
                 type: "공지사항"
                 created_at: "2025-01-15T10:30:00"
       400:
@@ -177,7 +180,7 @@ def add_notice():
         
         # Slack 알림 전송 (channel -> channel_type으로 수정)
         notifier = SlackNotifier()
-        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {notice_data['title']}\n작성자: {notice_data['created_by']}"
+        notification_message = f"새로운 공지사항이 등록되었습니다!\n제목: {notice_data['title']}\n작성자: {notice_data['username']}"
         notifier.send_notification(notification_message, channel_type="notice")
 
         return json_response(notice_data, message="공지사항이 성공적으로 생성되었습니다.", status_code=201)
@@ -275,7 +278,7 @@ def get_notices():
                       content:
                         type: string
                         example: "내일 오후 2시에 전체 회의가 있습니다."
-                      created_by:
+                      username:
                         type: string
                         example: "관리자"
                       type:
@@ -317,13 +320,13 @@ def get_notices():
                   - id: 1
                     title: "중요 공지사항"
                     content: "내일 오후 2시에 전체 회의가 있습니다."
-                    created_by: "관리자"
+                    username: "관리자"
                     type: "공지사항"
                     date: "2025-01-15T10:30:00"
                   - id: 2
                     title: "시스템 점검 안내"
                     content: "오늘 밤 12시부터 2시간 동안 시스템 점검이 있습니다."
-                    created_by: "시스템관리자"
+                    username: "시스템관리자"
                     type: "안내"
                     date: "2025-01-14T15:20:00"
                 pagination:

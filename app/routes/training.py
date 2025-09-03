@@ -94,15 +94,18 @@ def get_training_courses():
 
 @training_bp.route("/training_info", methods=["POST"])
 @handle_serialization_errors
-def save_training_info():
+def create_training_info():
     """
-    훈련 과정 정보 저장 API
+    훈련 과정 정보 생성 API
     ---
     tags:
-      - Training Info
-    summary: 새로운 훈련 과정 정보 저장
+      - Training
+    summary: 새로운 훈련 과정 정보 생성
     description: |
-      새로운 훈련 과정 정보를 저장합니다.
+      새로운 훈련 과정 정보를 생성합니다.
+      
+      ### API 명세
+      **POST** `/training_info`
       
       ### 사용 예시
       ```javascript
@@ -113,11 +116,11 @@ def save_training_info():
         },
         credentials: 'include',
         body: JSON.stringify({
-          training_course: "데이터 분석 스쿨 100기",
-          start_date: "2025-01-02",
-          end_date: "2025-06-01",
-          dept: "TechSol",
-          manager_name: "홍길동"
+          training_course: "데이터 분석 스쿨 5기",
+          start_date: "2025-02-01",
+          end_date: "2025-05-31",
+          dept: "데이터사이언스팀",
+          manager_name: "김매니저"
         })
       });
       
@@ -127,37 +130,35 @@ def save_training_info():
     parameters:
       - in: body
         name: body
-        description: "훈련 과정 정보를 JSON 형식으로 전달"
         required: true
         schema:
           type: object
           required:
             - training_course
-            - start_date
-            - end_date
-            - dept
-            - manager_name
           properties:
             training_course:
               type: string
-              example: "데이터 분석 스쿨 100기"
+              description: 훈련 과정명
+              example: "데이터 분석 스쿨 5기"
             start_date:
               type: string
-              format: date
-              example: "2025-01-02"
+              description: 시작 날짜 (YYYY-MM-DD 형식)
+              example: "2025-02-01"
             end_date:
               type: string
-              format: date
-              example: "2025-06-01"
+              description: 종료 날짜 (YYYY-MM-DD 형식)
+              example: "2025-05-31"
             dept:
               type: string
-              example: "TechSol"
+              description: 부서명
+              example: "데이터사이언스팀"
             manager_name:
               type: string
-              example: "홍길동"
+              description: 매니저명
+              example: "김매니저"
     responses:
       201:
-        description: 훈련 과정 저장 성공
+        description: 훈련 과정 정보 생성 성공
         schema:
           type: object
           properties:
@@ -166,7 +167,7 @@ def save_training_info():
               example: true
             message:
               type: string
-              example: "훈련 과정이 저장되었습니다!"
+              example: "훈련 과정 정보가 성공적으로 생성되었습니다."
             data:
               type: object
               properties:
@@ -175,68 +176,32 @@ def save_training_info():
                   example: 1
                 training_course:
                   type: string
-                  example: "데이터 분석 스쿨 100기"
+                  example: "데이터 분석 스쿨 5기"
                 start_date:
                   type: string
-                  format: date
-                  example: "2025-01-02"
+                  example: "2025-02-01"
                 end_date:
                   type: string
-                  format: date
-                  example: "2025-06-01"
+                  example: "2025-05-31"
                 dept:
                   type: string
-                  example: "TechSol"
+                  example: "데이터사이언스팀"
                 manager_name:
                   type: string
-                  example: "홍길동"
+                  example: "김매니저"
         examples:
           application/json:
-            summary: 훈련 과정 저장 성공 응답
+            summary: 훈련 과정 정보 생성 성공 응답
             value:
               success: true
-              message: "훈련 과정이 저장되었습니다!"
+              message: "훈련 과정 정보가 성공적으로 생성되었습니다."
               data:
                 id: 1
-                training_course: "데이터 분석 스쿨 100기"
-                start_date: "2025-01-02"
-                end_date: "2025-06-01"
-                dept: "TechSol"
-                manager_name: "홍길동"
-      400:
-        description: 필수 필드 누락
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: false
-            error:
-              type: string
-              example: "필수 필드가 누락되었습니다."
-            details:
-              type: object
-              example: null
-            status_code:
-              type: integer
-              example: 400
-      500:
-        description: 훈련 과정 저장 실패
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: false
-            error:
-              type: string
-              example: "훈련 과정 저장 실패"
-            details:
-              type: object
-              example: null
-            status_code:
-              type: integer
-              example: 500
+                training_course: "데이터 분석 스쿨 5기"
+                start_date: "2025-02-01"
+                end_date: "2025-05-31"
+                dept: "데이터사이언스팀"
+                manager_name: "김매니저"
     """
     try:
         validated_data = TrainingSerializer.deserialize_training_info_create(

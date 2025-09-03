@@ -103,7 +103,7 @@ class UncheckedService(BaseService):
                 unchecked_items.append(
                     {
                         "id": item.id,
-                        "content": item.content,
+                        "description": item.content,  # content → description으로 변경
                         "action_plan": item.action_plan,
                         "training_course": item.training_course,
                         "dept": dept,
@@ -122,7 +122,7 @@ class UncheckedService(BaseService):
         """미체크 항목 설명과 액션 플랜 저장"""
         with db_session() as session:
             unchecked_description = UncheckedDescription(
-                content=description_data["content"],
+                content=description_data["description"],  # content → description으로 변경
                 action_plan=description_data.get("action_plan"),
                 training_course=description_data.get("training_course"),
                 resolved=False,

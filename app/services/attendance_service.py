@@ -22,20 +22,20 @@ class AttendanceService(BaseService):
         check_in_time = None
         check_out_time = None
 
-        if attendance_data.get("check_in_time"):
+        if attendance_data.get("check_in"):
             try:
                 check_in_time = datetime.strptime(
-                    attendance_data["check_in_time"], "%H:%M"
+                    attendance_data["check_in"], "%H:%M"
                 ).time()
             except ValueError:
                 raise ValueError(
                     "출근 시간 형식이 올바르지 않습니다. HH:MM 형식을 사용해주세요."
                 )
 
-        if attendance_data.get("check_out_time"):
+        if attendance_data.get("check_out"):
             try:
                 check_out_time = datetime.strptime(
-                    attendance_data["check_out_time"], "%H:%M"
+                    attendance_data["check_out"], "%H:%M"
                 ).time()
             except ValueError:
                 raise ValueError(
@@ -87,8 +87,8 @@ class AttendanceService(BaseService):
                 "instructor": attendance.instructor,
                 "instructor_name": attendance.instructor_name,
                 "training_course": attendance.training_course,
-                "check_in_time": attendance.check_in_time.strftime("%H:%M") if attendance.check_in_time else None,
-                "check_out_time": attendance.check_out_time.strftime("%H:%M") if attendance.check_out_time else None,
+                "check_in": attendance.check_in_time.strftime("%H:%M") if attendance.check_in_time else None,
+                "check_out": attendance.check_out_time.strftime("%H:%M") if attendance.check_out_time else None,
                 "daily_log": attendance.daily_log,
             }
 
@@ -105,8 +105,8 @@ class AttendanceService(BaseService):
                 record["date"],
                 record["instructor"],
                 record["training_course"],
-                record["check_in_time"],
-                record["check_out_time"],
+                record["check_in"],
+                record["check_out"],
                 record["daily_log"],
             )
             for record in serialized_records

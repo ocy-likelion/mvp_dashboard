@@ -615,7 +615,6 @@ def get_issue_comments():
         return error_json_response("댓글 조회 실패", status_code=500)
 
 
-# 해결된 이슈 클릭
 @issues_bp.route("/issues/resolve", methods=["POST"])
 @handle_serialization_errors
 def resolve_issue():
@@ -624,9 +623,12 @@ def resolve_issue():
     ---
     tags:
       - Issues
-    summary: 특정 이슈를 해결 처리합니다
+    summary: 이슈 해결 처리
     description: |
-      특정 이슈를 해결 처리합니다. 해결된 이슈는 목록에서 제외됩니다.
+      이슈를 해결된 상태로 변경합니다.
+      
+      ### API 명세
+      **POST** `/issues/resolve`
       
       ### 사용 예시
       ```javascript
@@ -668,81 +670,13 @@ def resolve_issue():
               example: true
             message:
               type: string
-              example: "이슈가 해결되었습니다."
-            data:
-              type: object
-              properties:
-                id:
-                  type: integer
-                  example: 1
-                content:
-                  type: string
-                  example: "시스템 로그인이 안 되는 문제가 있습니다."
-                training_course:
-                  type: string
-                  example: "데이터 분석 스쿨 4기"
-                username:
-                  type: string
-                  example: "홍길동"
-                date:
-                  type: string
-                  format: date
-                  example: "2025-01-15"
-                created_at:
-                  type: string
-                  format: date-time
-                  example: "2025-01-15T10:30:00"
-                resolved:
-                  type: boolean
-                  example: true
+              example: "이슈가 성공적으로 해결되었습니다."
         examples:
           application/json:
             summary: 이슈 해결 성공 응답
             value:
               success: true
-              message: "이슈가 해결되었습니다."
-              data:
-                id: 1
-                content: "시스템 로그인이 안 되는 문제가 있습니다."
-                training_course: "데이터 분석 스쿨 4기"
-                username: "홍길동"
-                date: "2025-01-15"
-                created_at: "2025-01-15T10:30:00"
-                resolved: true
-      400:
-        description: 요청 데이터 오류
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: false
-            error:
-              type: string
-              example: "이슈 ID를 입력해주세요."
-            details:
-              type: object
-              example: null
-            status_code:
-              type: integer
-              example: 400
-      500:
-        description: 이슈 해결 실패
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: false
-            error:
-              type: string
-              example: "이슈 해결 실패"
-            details:
-              type: object
-              example: null
-            status_code:
-              type: integer
-              example: 500
+              message: "이슈가 성공적으로 해결되었습니다."
     """
     try:
         validated_data = IssueSerializer.deserialize_issue_resolve(request.json)
