@@ -47,8 +47,8 @@ class Attendance(Base):
     instructor = Column(String(100))
     instructor_name = Column(String(100))
     training_course = Column(String(255))
-    check_in_time = Column(Time)
-    check_out_time = Column(Time)
+    check_in = Column(Time)
+    check_out = Column(Time)
     daily_log = Column(Boolean)
 
 

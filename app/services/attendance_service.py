@@ -19,12 +19,12 @@ class AttendanceService(BaseService):
     def create_attendance(attendance_data: Dict) -> Dict:
         """출퇴근 기록 저장"""
         # 시간 문자열을 Time 객체로 변환
-        check_in_time = None
-        check_out_time = None
+        check_in = None
+        check_out = None
 
         if attendance_data.get("check_in"):
             try:
-                check_in_time = datetime.strptime(
+                check_in = datetime.strptime(
                     attendance_data["check_in"], "%H:%M"
                 ).time()
             except ValueError:
@@ -34,7 +34,7 @@ class AttendanceService(BaseService):
 
         if attendance_data.get("check_out"):
             try:
-                check_out_time = datetime.strptime(
+                check_out = datetime.strptime(
                     attendance_data["check_out"], "%H:%M"
                 ).time()
             except ValueError:
@@ -73,8 +73,8 @@ class AttendanceService(BaseService):
                 instructor=attendance_data.get("instructor"),
                 instructor_name=attendance_data.get("instructor_name"),
                 training_course=attendance_data.get("training_course"),
-                check_in_time=check_in_time,
-                check_out_time=check_out_time,
+                check_in=check_in,
+                check_out=check_out,
                 daily_log=attendance_data.get("daily_log", False),
             )
 
@@ -87,8 +87,8 @@ class AttendanceService(BaseService):
                 "instructor": attendance.instructor,
                 "instructor_name": attendance.instructor_name,
                 "training_course": attendance.training_course,
-                "check_in": attendance.check_in_time.strftime("%H:%M") if attendance.check_in_time else None,
-                "check_out": attendance.check_out_time.strftime("%H:%M") if attendance.check_out_time else None,
+                "check_in": attendance.check_in.strftime("%H:%M") if attendance.check_in else None,
+                "check_out": attendance.check_out.strftime("%H:%M") if attendance.check_out else None,
                 "daily_log": attendance.daily_log,
             }
 
@@ -246,20 +246,3 @@ class AttendanceService(BaseService):
                     "has_prev": False
                 }
             }
-
-    @staticmethod
-    def calculate_work_hours(check_in_time: time, check_out_time: time) -> float:
-        """근무 시간 계산 (시간 단위)"""
-        if not check_in_time or not check_out_time:
-            return 0.0
-
-        # time을 datetime으로 변환하여 계산
-        check_in_dt = datetime.combine(datetime.today(), check_in_time)
-        check_out_dt = datetime.combine(datetime.today(), check_out_time)
-
-        # 퇴근 시간이 출근 시간보다 이른 경우 (다음날로 간주)
-        if check_out_dt <= check_in_dt:
-            check_out_dt = check_out_dt.replace(day=check_out_dt.day + 1)
-
-        work_duration = check_out_dt - check_in_dt
-        return work_duration.total_seconds() / 3600  # 시간 단위로 반환

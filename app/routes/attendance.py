@@ -152,10 +152,10 @@ def get_attendance():
                       training_course:
                         type: string
                         example: "데이터 분석 스쿨 4기"
-                      check_in_time:
+                      check_in:
                         type: string
                         example: "09:00"
-                      check_out_time:
+                      check_out:
                         type: string
                         example: "18:00"
                       daily_log:
@@ -195,16 +195,16 @@ def get_attendance():
                     instructor: "1"
                     instructor_name: "홍길동"
                     training_course: "데이터 분석 스쿨 4기"
-                    check_in_time: "09:00"
-                    check_out_time: "18:00"
+                    check_in: "09:00"
+                    check_out: "18:00"
                     daily_log: true
                   - id: 2
                     date: "2025-01-14"
                     instructor: "2"
                     instructor_name: "김철수"
                     training_course: "데이터 분석 스쿨 4기"
-                    check_in_time: "08:30"
-                    check_out_time: "17:30"
+                    check_in: "08:30"
+                    check_out: "17:30"
                     daily_log: false
                 pagination:
                   page: 1
@@ -285,8 +285,8 @@ def get_attendance():
                 "instructor": record.instructor,
                 "instructor_name": record.instructor_name,
                 "training_course": record.training_course,
-                "check_in_time": record.check_in_time.strftime("%H:%M") if record.check_in_time else None,
-                "check_out_time": record.check_out_time.strftime("%H:%M") if record.check_out_time else None,
+                "check_in": record.check_in.strftime("%H:%M") if record.check_in else None,
+                "check_out": record.check_out.strftime("%H:%M") if record.check_out else None,
                 "daily_log": record.daily_log,
             }
             records_data.append(record_dict)
