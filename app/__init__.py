@@ -42,7 +42,7 @@ def create_app():
     app.config.update(
         SESSION_COOKIE_SECURE=True,  # HTTPS에서만 쿠키 전송
         # SESSION_COOKIE_HTTPONLY=True,  # JavaScript에서 쿠키 접근 방지
-        SESSION_COOKIE_SAMESITE="Lax",  # CSRF 공격 방지
+        # SESSION_COOKIE_SAMESITE="Lax",  # CSRF 공격 방지
         PERMANENT_SESSION_LIFETIME=timedelta(
             hours=12
         ),  # 세션 유효 시간 12시간으로 설정
