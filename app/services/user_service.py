@@ -3,12 +3,23 @@ User service for user-related business logic
 """
 
 import bcrypt
+import hmac
 import re
 from typing import Dict, Tuple
+
 
 from app.utils.database import db_session, db_session_read_only
 from .base_service import BaseService
 from app.models.models import User
+
+
+def _is_bcrypt_hash(value: str) -> bool:
+    v = (value or "").strip()
+    return v.startswith("$2a$") or v.startswith("$2b$") or v.startswith("$2y$")
+
+def _compare_plain(a: str, b: str) -> bool:
+    # 타이밍 공격 대비(문자열 길이 다른 경우에도 일정 시간 비교)
+    return hmac.compare_digest(a or "", b or "")
 
 
 class UserService(BaseService):
@@ -33,7 +44,7 @@ class UserService(BaseService):
         return hashed.decode("utf-8")
 
     @staticmethod
-    def verify_password(password: str, hashed_password: str) -> bool:
+    def verify_password(password: str, hashed_or_plain: str) -> bool:
         """
         평문 비밀번호와 해싱된 비밀번호를 비교하여 검증합니다.
 
@@ -45,11 +56,13 @@ class UserService(BaseService):
             bool: 비밀번호가 일치하면 True, 아니면 False
         """
         try:
-            # 문자열을 bytes로 인코딩
-            password_bytes = password.encode("utf-8")
-            hashed_bytes = hashed_password.encode("utf-8")
-            # bcrypt로 검증
-            return bcrypt.checkpw(password_bytes, hashed_bytes)
+            if _is_bcrypt_hash(hashed_or_plain):
+                return bcrypt.checkpw(
+                    (password or "").encode("utf-8"),
+                    (hashed_or_plain or "").encode("utf-8"),
+                )
+            # 평문인 경우
+            return _compare_plain(password, hashed_or_plain)
         except Exception:
             # 인코딩 오류나 기타 예외 발생 시 False 반환
             return False
@@ -103,6 +116,14 @@ class UserService(BaseService):
         # 비밀번호 검증 (bcrypt 사용)
         if not UserService.verify_password(password, user.password):
             raise ValueError("잘못된 ID 또는 비밀번호입니다.")
+
+        # DB 값이 평문이면 지금 바로 bcrypt로 재해시(쓰기 세션)
+        if not _is_bcrypt_hash(user.password):
+            new_hash = UserService.hash_password(password)
+            with db_session() as w:
+                u = w.query(User).get(user.id)  # 동일 트랜잭션에서 갱신
+                if u:
+                    u.password = new_hash
 
         return user
 
