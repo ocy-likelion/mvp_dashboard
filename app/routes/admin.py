@@ -337,7 +337,7 @@ def get_combined_task_status():
     """
     try:
         task_status = AdminService.get_combined_task_status()
-        serialized_task_status = AdminSerializer.serialize_task_status(task_status)
+        serialized_task_status = AdminSerializer.serialize_combined_task_status(task_status)
 
         return json_response(
             data=serialized_task_status, message="통합 업무 체크 상태 조회 성공", status_code=200

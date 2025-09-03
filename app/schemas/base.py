@@ -69,6 +69,17 @@ class TaskStatusResponseSchema(Schema):
     timestamp = fields.DateTime(required=True, format="iso")
 
 
+class CombinedTaskStatusResponseSchema(Schema):
+    """통합 업무 상태 응답용 스키마"""
+
+    training_course = fields.Str(required=True, description="훈련 과정명")
+    dept = fields.Str(required=True, description="부서명")
+    manager_name = fields.Str(required=True, description="담당자명")
+    daily_check_rate = fields.Str(required=True, description="당일 체크율")
+    yesterday_check_rate = fields.Str(required=True, description="전날 체크율")
+    overall_check_rate = fields.Str(required=True, description="전체 체크율")
+
+
 # ============================================================================
 # Notification 관련 스키마
 # ============================================================================
@@ -95,4 +106,5 @@ error_schema = ErrorSchema()
 pagination_schema = PaginationSchema()
 date_filter_schema = DateFilterSchema()
 task_status_response_schema = TaskStatusResponseSchema()
+combined_task_status_response_schema = CombinedTaskStatusResponseSchema()
 notification_query_schema = NotificationQuerySchema()
