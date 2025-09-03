@@ -49,7 +49,7 @@ class IssueCreateSchema(Schema):
     issue = fields.Str(required=True)  # content → issue로 변경
     training_course = fields.Str()
     username = fields.Str()
-    date = fields.Date()
+    date = fields.Str(allow_none=True)  # Date → Str로 변경, null 허용
 
 
 class IssueCommentCreateSchema(Schema):

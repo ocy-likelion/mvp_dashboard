@@ -264,7 +264,7 @@ def get_notices():
             data:
               type: object
               properties:
-                items:
+                data:
                   type: array
                   items:
                     type: object
@@ -278,7 +278,7 @@ def get_notices():
                       content:
                         type: string
                         example: "내일 오후 2시에 전체 회의가 있습니다."
-                      username:
+                      created_by:
                         type: string
                         example: "관리자"
                       type:
@@ -316,17 +316,17 @@ def get_notices():
               success: true
               message: "공지사항 조회 성공"
               data:
-                items:
+                data:
                   - id: 1
                     title: "중요 공지사항"
                     content: "내일 오후 2시에 전체 회의가 있습니다."
-                    username: "관리자"
+                    created_by: "관리자"
                     type: "공지사항"
                     date: "2025-01-15T10:30:00"
                   - id: 2
                     title: "시스템 점검 안내"
                     content: "오늘 밤 12시부터 2시간 동안 시스템 점검이 있습니다."
-                    username: "시스템관리자"
+                    created_by: "시스템관리자"
                     type: "안내"
                     date: "2025-01-14T15:20:00"
                 pagination:
@@ -378,8 +378,14 @@ def get_notices():
         # 페이지네이션을 포함한 공지사항 조회
         result = NoticeService.get_notices_paginated(validated_filters)
         
+        # 프론트엔드 호환성을 위해 응답 구조 수정
+        response_data = {
+            "data": result["items"],  # 프론트엔드가 기대하는 구조
+            "pagination": result["pagination"]
+        }
+        
         return json_response(
-            data=result, message="공지사항 조회 성공", status_code=200
+            data=response_data, message="공지사항 조회 성공", status_code=200
         )
     except Exception as e:
         logger.error("Error retrieving notices", exc_info=True)

@@ -20,13 +20,24 @@ class IssueService(BaseService):
         
         try:
             with db_session() as session:
+                # 날짜 처리
+                date_value = None
+                if issue_data.get("date"):
+                    try:
+                        # 문자열 날짜를 파싱하여 date 객체로 변환
+                        from datetime import datetime
+                        date_value = datetime.strptime(issue_data["date"], "%Y-%m-%d").date()
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid date format: {issue_data['date']}, setting to None")
+                        date_value = None
+                
                 # 이슈 생성
                 issue = Issue(
                     content=issue_data["issue"],  # content → issue로 변경
                     training_course=issue_data.get("training_course"),
                     username=issue_data.get("username"),
                     created_by=issue_data.get("created_by", issue_data.get("username")),
-                    date=issue_data.get("date"),
+                    date=date_value,
                     resolved=False,
                 )
 
