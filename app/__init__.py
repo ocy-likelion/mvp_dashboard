@@ -48,7 +48,17 @@ def create_app():
         ),  # 세션 유효 시간 12시간으로 설정
     )
 
-    CORS(app, supports_credentials=True)  # CORS 설정 강화 (세션 쿠키 허용)
+    # CORS 설정 - 모든 도메인에서 POST 요청 허용
+    CORS(app, 
+         supports_credentials=True,
+         resources={
+             r"/*": {
+                 "origins": "*",  # 모든 도메인 허용
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+                 "expose_headers": ["Content-Type", "Authorization"]
+             }
+         })
 
     # Swagger 설정 개선
     app.config["SWAGGER"] = {
