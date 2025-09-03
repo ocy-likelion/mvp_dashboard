@@ -41,7 +41,7 @@ def create_app():
     # 세션 설정 강화
     app.config.update(
         SESSION_COOKIE_SECURE=True,  # HTTPS에서만 쿠키 전송
-        # SESSION_COOKIE_HTTPONLY=True,  # JavaScript에서 쿠키 접근 방지
+        SESSION_COOKIE_HTTPONLY=True,  # JavaScript에서 쿠키 접근 방지
         SESSION_COOKIE_SAMESITE="Lax",  # CSRF 공격 방지
         PERMANENT_SESSION_LIFETIME=timedelta(
             hours=12
@@ -53,7 +53,7 @@ def create_app():
          supports_credentials=True,
          resources={
              r"/*": {
-                 "origins": "*",  # 모든 도메인 허용
+                 "origins": ["http://localhost:5173", "https://lion-helper-v2.vercel.app", "*"],  # localhost:5173 명시적 허용
                  "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
                  "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
                  "expose_headers": ["Content-Type", "Authorization"]
