@@ -16,6 +16,8 @@ class TrainingInfoSchema(SQLAlchemyAutoSchema):
         include_fk = True
 
     created_at = fields.DateTime(dump_only=True)
+    start_date = fields.Str(dump_only=True)
+    end_date = fields.Str(dump_only=True)
 
     @validates("training_course")
     def validate_training_course(self, value):
