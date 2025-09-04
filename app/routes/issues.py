@@ -330,10 +330,9 @@ def get_issues():
     """
     try:
         response_data = IssueService.get_unresolved_issues()
-        serialized_response_data = IssueSerializer.serialize_issues(response_data)
 
         return json_response(
-            data=serialized_response_data, message="이슈 목록 조회 성공", status_code=200
+            data=response_data, message="이슈 목록 조회 성공", status_code=200
         )
 
     except Exception as e:
