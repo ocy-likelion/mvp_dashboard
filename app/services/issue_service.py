@@ -52,7 +52,7 @@ class IssueService(BaseService):
                     "username": issue.username,
                     "created_by": issue.created_by,
                     "date": issue.date.strftime("%Y-%m-%d") if issue.date else None,
-                    "created_at": issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "created_at": issue.created_at,
                     "resolved": issue.resolved,
                 }
         except Exception as e:

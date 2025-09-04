@@ -174,7 +174,7 @@ def create_issue():
             message = (
                 f"*새로운 이슈가 등록되었습니다!*\n"
                 f">*과정:* {issue_data.get('training_course')}\n"
-                f">*내용:* {issue_data['content']}\n"
+                f">*내용:* {issue_data['issue']}\n"
                 f">*작성자:* {issue_data.get('username')}"
             )
             notifier.send_notification(message, "issue")
