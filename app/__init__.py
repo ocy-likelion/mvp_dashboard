@@ -40,15 +40,25 @@ def create_app():
 
     # 세션 설정 강화
     app.config.update(
-        SESSION_COOKIE_SECURE=True,  # HTTPS에서만 쿠키 전송
-        SESSION_COOKIE_HTTPONLY=True,  # JavaScript에서 쿠키 접근 방지
-        SESSION_COOKIE_SAMESITE="Lax",  # CSRF 공격 방지
+        SESSION_COOKIE_SECURE=False,  # HTTPS에서만 쿠키 전송
+        # SESSION_COOKIE_HTTPONLY=True,  # JavaScript에서 쿠키 접근 방지
+        SESSION_COOKIE_SAMESITE="None",  # CSRF 공격 방지
         PERMANENT_SESSION_LIFETIME=timedelta(
             hours=12
         ),  # 세션 유효 시간 12시간으로 설정
     )
 
-    CORS(app, supports_credentials=True)  # CORS 설정 강화 (세션 쿠키 허용)
+    # CORS 설정 - 모든 도메인에서 POST 요청 허용
+    CORS(app, 
+         supports_credentials=True,
+         resources={
+             r"/*": {
+                 "origins": ["https://lion-helper-v2.vercel.app", "*"],
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+                 "expose_headers": ["Content-Type", "Authorization"]
+             }
+         })
 
     # Swagger 설정 개선
     app.config["SWAGGER"] = {
