@@ -55,11 +55,11 @@ def create_issue():
         schema:
           type: object
           required:
-            - content
+            - issue
             - training_course
             - username
           properties:
-            content:
+            issue:
               type: string
               description: 이슈 내용
               example: "시스템 로그인이 안 되는 문제가 있습니다."
@@ -102,6 +102,9 @@ def create_issue():
                 username:
                   type: string
                   example: "홍길동"
+                created_by:
+                  type: string
+                  example: "홍길동"
                 date:
                   type: string
                   format: date
@@ -124,6 +127,7 @@ def create_issue():
                 content: "시스템 로그인이 안 되는 문제가 있습니다."
                 training_course: "데이터 분석 스쿨 4기"
                 username: "홍길동"
+                created_by: "홍길동"
                 date: "2025-01-15"
                 created_at: "2025-01-15T10:30:00"
                 resolved: false
@@ -377,7 +381,7 @@ def add_comment():
           required:
             - issue_id
             - comment
-            - created_by
+            - username
           properties:
             issue_id:
               type: integer
@@ -387,7 +391,7 @@ def add_comment():
               type: string
               description: 댓글 내용
               example: "이 문제는 이미 확인했습니다. 곧 해결하겠습니다."
-            created_by:
+            username:
               type: string
               description: 작성자명
               example: "관리자"

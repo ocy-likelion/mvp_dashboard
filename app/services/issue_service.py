@@ -46,7 +46,7 @@ class IssueService(BaseService):
                 # 딕셔너리 형태로 반환
                 return {
                     "id": issue.id,
-                    "issue": issue.content,  # content → issue로 변경
+                    "content": issue.content,
                     "training_course": issue.training_course,
                     "username": issue.username,
                     "created_by": issue.created_by,
