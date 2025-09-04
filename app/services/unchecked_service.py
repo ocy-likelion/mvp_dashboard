@@ -103,7 +103,7 @@ class UncheckedService(BaseService):
                 unchecked_items.append(
                     {
                         "id": item.id,
-                        "description": item.content,  # content → description으로 변경
+                        "content": item.content,
                         "action_plan": item.action_plan,
                         "training_course": item.training_course,
                         "dept": dept,
