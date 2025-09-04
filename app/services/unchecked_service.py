@@ -171,8 +171,11 @@ class UncheckedService(BaseService):
             return unchecked_comment
 
     @staticmethod
-    def get_unchecked_comments(unchecked_id: int) -> List[Dict]:
+    def get_unchecked_comments(validated_data: Dict) -> List[Dict]:
         """미체크 항목의 댓글 조회"""
+        # 검증된 데이터에서 unchecked_id 추출
+        unchecked_id = validated_data["unchecked_id"]
+        
         with db_session_read_only() as session:
             # 미체크 항목 존재 확인
             UncheckedService.safe_get_by_id(
