@@ -6,7 +6,6 @@ from .base import (
     ErrorSchema,
     DateFilterSchema,
     TaskStatusResponseSchema,
-    CombinedTaskStatusResponseSchema,
     NotificationQuerySchema,
     # 인스턴스
     response_schema,
@@ -15,7 +14,6 @@ from .base import (
     pagination_schema,
     date_filter_schema,
     task_status_response_schema,
-    combined_task_status_response_schema,
     notification_query_schema,
 )
 

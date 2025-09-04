@@ -434,10 +434,9 @@ def get_unchecked_descriptions():
     """
     try:
         unchecked_items = UncheckedService.get_unchecked_descriptions()
-        serialized_unchecked_items = UncheckedSerializer.serialize_unchecked_descriptions(unchecked_items)
         
         return json_response(
-            data=serialized_unchecked_items,
+            data=unchecked_items,
             message="미체크 항목 목록 조회 성공",
             status_code=200,
         )
