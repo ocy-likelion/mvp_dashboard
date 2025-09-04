@@ -20,30 +20,13 @@ class IssueService(BaseService):
         
         try:
             with db_session() as session:
-                # 날짜 처리 - 데이터베이스 Date 타입에 맞게 처리
-                date_value = None
-                if issue_data.get("date"):
-                    try:
-                        # 문자열 날짜를 파싱하여 date 객체로 변환 (데이터베이스 Date 타입에 맞춤)
-                        from datetime import datetime
-                        date_str = str(issue_data["date"]).strip()
-                        date_value = datetime.strptime(date_str, "%Y-%m-%d").date()
-                        logger.info(f"Successfully parsed date: {date_value}")
-                    except (ValueError, TypeError) as e:
-                        logger.warning(f"Invalid date format: {issue_data['date']}, error: {e}, setting to None")
-                        date_value = None
-                else:
-                    # date가 없거나 빈 문자열인 경우 None으로 설정
-                    logger.info("No date provided, setting to None")
-                    date_value = None
-                
                 # 이슈 생성
                 issue = Issue(
                     content=issue_data["issue"],  # content → issue로 변경
                     training_course=issue_data.get("training_course"),
                     username=issue_data.get("username"),
                     created_by=issue_data.get("created_by", issue_data.get("username")),
-                    date=date_value,  # date 객체로 저장
+                    date=issue_data.get("date"),
                     resolved=False,
                 )
 
@@ -56,7 +39,7 @@ class IssueService(BaseService):
                     "training_course": issue.training_course,
                     "username": issue.username,
                     "created_by": issue.created_by,
-                    "date": issue.date.strftime("%Y-%m-%d") if issue.date else None,  # date 객체를 문자열로 변환
+                    "date": issue.date.strftime("%Y-%m-%d") if issue.date else None,
                     "created_at": issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                     "resolved": issue.resolved,
                 }
@@ -94,18 +77,16 @@ class IssueService(BaseService):
                 issue_data = {
                     "id": issue.id,
                     "content": issue.content,
-                    "training_course": issue.training_course,
-                    "username": issue.username,
-                    "created_by": issue.created_by,
-                    "date": issue.date.strftime("%Y-%m-%d") if issue.date else None,
-                    "created_at": issue.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "date": issue.date,  # 기존 함수와 동일하게 날짜 형식 그대로 유지
+                    "created_at": issue.created_at,  # 기존 함수와 동일하게 생성일 형식 그대로 유지
+                    "created_by": issue.created_by or "작성자 없음",  # 기존 함수와 동일하게 COALESCE 처리
                     "resolved": issue.resolved,
                     "comments": [
                         {
                             "id": comment.id,
                             "comment": comment.comment,
+                            "created_at": comment.created_at,
                             "created_by": comment.created_by,
-                            "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                         }
                         for comment in comments
                     ],

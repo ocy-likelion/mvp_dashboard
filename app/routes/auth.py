@@ -1,4 +1,4 @@
-from flask import Blueprint, request, session
+from flask import Blueprint, request, session, jsonify
 import logging
 
 from app.serializers import (
@@ -154,14 +154,16 @@ def login():
     try:
         validated_data = UserSerializer.deserialize_user_login(request.json)
         user = UserService.login(validated_data)
-        serialized_user = UserSerializer.serialize_user(user)
-
+        # 기존 함수와 동일한 구조로 사용자 데이터 생성
+        user_data = {"id": user.id, "username": user.username}
         session.permanent = True  # 세션을 영구적으로 설정
-        session["user"] = serialized_user
+        session["user"] = user_data
 
-        return json_response(
-            data=serialized_user, message="로그인 성공!", status_code=200
-        )
+        return jsonify({
+            "success": True, 
+            "message": "로그인 성공!",
+            "user": user_data  # 기존 함수와 동일한 구조
+        }), 200
 
     except ValueError as e:
         logger.warning(f"로그인 실패: {str(e)}")
@@ -216,7 +218,7 @@ def logout():
               data: null
     """
     session.pop("user", None)
-    return json_response(data=None, message="로그아웃 완료!", status_code=200)
+    return jsonify({"success": True, "message": "로그아웃 완료!"}), 200
 
 
 @auth_bp.route("/me", methods=["GET"])
@@ -301,8 +303,8 @@ def get_current_user():
               example: 401
     """
     if "user" not in session:
-        return error_json_response("로그인이 필요합니다.", status_code=401)
-    return json_response(data={"user": session["user"]}, message="사용자 정보 조회 성공", status_code=200)
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+    return jsonify({"success": True, "user": session["user"]}), 200
 
 
 @auth_bp.route("/user/change-password", methods=["POST"])
@@ -435,11 +437,10 @@ def change_password():
         validated_data = UserSerializer.deserialize_password_change(request.json)
         UserService.change_password(validated_data)
 
-        return json_response(
-            data=None,
-            message="비밀번호가 성공적으로 변경되었습니다.",
-            status_code=200,
-        )
+        return jsonify({
+            "success": True,
+            "message": "비밀번호가 성공적으로 변경되었습니다."
+        }), 200
 
     except Exception as e:
         logger.error("비밀번호 변경 오류", exc_info=True)
