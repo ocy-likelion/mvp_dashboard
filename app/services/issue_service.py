@@ -2,7 +2,7 @@
 Issue service for issue-related business logic
 """
 
-from typing import Dict, List
+from typing import Dict, List, Union
 
 from app.utils.database import db_session, db_session_read_only
 from .base_service import BaseService
@@ -165,8 +165,15 @@ class IssueService(BaseService):
             }
 
     @staticmethod
-    def get_issue_comments(issue_id: int) -> List[IssueComment]:
+    def get_issue_comments(issue_id: Union[int, dict]) -> List[IssueComment]:
         """특정 이슈에 대한 댓글 목록 조회"""
+        # dict 형태로 들어올 경우 정수 ID만 추출
+        if isinstance(issue_id, dict):
+            issue_id = issue_id.get("issue_id")
+
+        # 최종적으로 int로 보장
+        issue_id = int(issue_id)
+
         with db_session_read_only() as session:
             # 이슈 존재 확인
             IssueService.safe_get_by_id(
