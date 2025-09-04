@@ -171,7 +171,7 @@ class UncheckedDescription(Base):
     user_id = Column(Integer)  # FK가 명시되지 않음
     username = Column(String(255))
     action_plan = Column(Text)
-    task_id = Column(Integer, ForeignKey("task_items.id"))
+    id_task = Column(Integer, ForeignKey("task_items.id"))
     created_by = Column(String(100))
 
     # Relationships
