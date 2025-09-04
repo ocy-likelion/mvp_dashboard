@@ -49,7 +49,7 @@ class IssueCreateSchema(Schema):
     issue = fields.Str(required=True)  # content → issue로 변경
     training_course = fields.Str()
     username = fields.Str()
-    date = fields.Date()
+    date = fields.Str()
 
 
 class IssueCommentCreateSchema(Schema):
@@ -57,7 +57,7 @@ class IssueCommentCreateSchema(Schema):
 
     issue_id = fields.Int(required=True)  # nullable=False
     comment = fields.Str(required=True)  # nullable=False
-    created_by = fields.Str()
+    username = fields.Str()
 
 
 class IssueResolveSchema(Schema):
