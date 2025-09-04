@@ -20,22 +20,34 @@ class IssueService(BaseService):
         
         try:
             with db_session() as session:
+                # date 문자열을 datetime.date 객체로 변환 (스키마에서 이미 검증됨)
+                date_value = None
+                if issue_data.get("date"):
+                    from datetime import datetime
+                    date_str = issue_data["date"]
+                    if "T" in date_str:
+                        # ISO 8601 형식: "2025-09-04T03:10:38.544Z"
+                        date_value = datetime.fromisoformat(date_str.replace("Z", "+00:00")).date()
+                    else:
+                        # YYYY-MM-DD 형식
+                        date_value = datetime.strptime(date_str, "%Y-%m-%d").date()
+                
                 # 이슈 생성
                 issue = Issue(
                     content=issue_data["issue"],  # content → issue로 변경
                     training_course=issue_data.get("training_course"),
                     username=issue_data.get("username"),
                     created_by=issue_data.get("created_by", issue_data.get("username")),
-                    date=issue_data.get("date"),
+                    date=date_value,  # date 객체로 저장
                     resolved=False,
                 )
 
                 IssueService.flush_and_get_id(session, issue)
                 
-                # 딕셔너리 형태로 반환
+                # 딕셔너리 형태로 반환 (기존 함수와 동일한 구조)
                 return {
                     "id": issue.id,
-                    "content": issue.content,
+                    "issue": issue.content,  # content → issue로 변경
                     "training_course": issue.training_course,
                     "username": issue.username,
                     "created_by": issue.created_by,
