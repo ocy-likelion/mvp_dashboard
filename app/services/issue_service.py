@@ -108,7 +108,7 @@ class IssueService(BaseService):
             return session.query(Issue).order_by(Issue.created_at.desc()).all()
 
     @staticmethod
-    def add_comment(comment_data: Dict) -> IssueComment:
+    def add_comment(comment_data: Dict) -> Dict:
         """이슈 댓글 추가"""
         with db_session() as session:
             # 이슈 존재 확인
@@ -116,15 +116,20 @@ class IssueService(BaseService):
                 session, Issue, comment_data["issue_id"], "이슈를 찾을 수 없습니다."
             )
 
-            # 댓글 생성
+            # 댓글 생성 (기존 함수와 동일하게 username을 created_by로 사용)
             comment = IssueComment(
                 issue_id=comment_data["issue_id"],
                 comment=comment_data["comment"],
-                created_by=comment_data["created_by"],
+                created_by=comment_data["username"],  # username → created_by로 매핑
             )
 
             IssueService.flush_and_get_id(session, comment)
-            return comment
+            
+            # 기존 함수와 동일한 단순 성공 메시지 반환
+            return {
+                "success": True,
+                "message": "댓글이 등록되었습니다."
+            }
 
     @staticmethod
     def resolve_issue(validated_data: Dict) -> Dict:

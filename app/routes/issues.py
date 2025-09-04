@@ -491,17 +491,15 @@ def add_comment():
     """
     try:
         validated_data = IssueSerializer.deserialize_issue_comment_create(request.json)
-        comment = IssueService.add_comment(validated_data)
-        serialized_comment = IssueSerializer.serialize_issue_comment(comment)
+        result = IssueService.add_comment(validated_data)
 
         # 댓글 등록 알림
         notifier = SlackNotifier()
-        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n댓글: {serialized_comment['comment']}"
+        notification_message = f"이슈에 새로운 댓글이 등록되었습니다!\n댓글: {validated_data['comment']}"
         notifier.send_notification(notification_message, channel_type="comment")
 
-        return json_response(
-            data=serialized_comment, message="댓글이 등록되었습니다.", status_code=201
-        )
+        # 서비스에서 반환하는 데이터를 그대로 사용
+        return jsonify(result), 201
     except Exception as e:
         logger.error(f"댓글 등록 중 오류: {str(e)}")
         return error_json_response("댓글 등록 실패", status_code=500)
