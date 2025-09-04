@@ -51,6 +51,21 @@ class IssueCreateSchema(Schema):
     username = fields.Str()
     date = fields.Str()
 
+    @validates("date")
+    def validate_date(self, value):
+        """날짜 형식 검증 (ISO 8601 또는 YYYY-MM-DD 형식)"""
+        if value and value.strip():
+            try:
+                from datetime import datetime
+                if "T" in value:
+                    # ISO 8601 형식: "2025-09-04T03:10:38.544Z"
+                    datetime.fromisoformat(value.replace("Z", "+00:00"))
+                else:
+                    # YYYY-MM-DD 형식
+                    datetime.strptime(value, "%Y-%m-%d")
+            except (ValueError, TypeError):
+                raise ValidationError("날짜 형식이 올바르지 않습니다. (YYYY-MM-DD 또는 ISO 8601 형식)")
+
 
 class IssueCommentCreateSchema(Schema):
     """이슈 댓글 생성용 스키마"""
