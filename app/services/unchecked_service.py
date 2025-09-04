@@ -107,7 +107,7 @@ class UncheckedService(BaseService):
                         "action_plan": item.action_plan,
                         "training_course": item.training_course,
                         "dept": dept,
-                        "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                        "created_at": item.created_at,
                         "resolved": item.resolved,
                         "due_days": due_days,
                         "deadline": deadline.strftime("%Y-%m-%d"),
