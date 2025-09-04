@@ -127,7 +127,7 @@ class IssueService(BaseService):
             return comment
 
     @staticmethod
-    def resolve_issue(validated_data: Dict) -> Issue:
+    def resolve_issue(validated_data: Dict) -> Dict:
         """이슈 해결"""
         issue_id = validated_data["issue_id"]
 
@@ -140,7 +140,12 @@ class IssueService(BaseService):
                 raise ValueError("이미 해결된 이슈입니다.")
 
             issue.resolved = True
-            return issue
+            
+            # 기존 함수와 동일한 단순 성공 메시지 반환
+            return {
+                "success": True,
+                "message": "이슈가 해결되었습니다."
+            }
 
     @staticmethod
     def get_issue_comments(issue_id: int) -> List[IssueComment]:

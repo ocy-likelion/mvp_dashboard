@@ -1,4 +1,4 @@
-from flask import Blueprint, request, send_file
+from flask import Blueprint, request, send_file, jsonify
 import io
 import pandas as pd
 import logging
@@ -683,12 +683,10 @@ def resolve_issue():
     """
     try:
         validated_data = IssueSerializer.deserialize_issue_resolve(request.json)
-        issue = IssueService.resolve_issue(validated_data)
-        serialized_issue = IssueSerializer.serialize_issue(issue)
+        result = IssueService.resolve_issue(validated_data)
 
-        return json_response(
-            data=serialized_issue, message="이슈가 해결되었습니다.", status_code=200
-        )
+        # 서비스에서 반환하는 데이터를 그대로 사용
+        return jsonify(result), 200
     except Exception as e:
         logger.error("Error resolving issue", exc_info=True)
         return error_json_response("이슈 해결 실패", status_code=500)
