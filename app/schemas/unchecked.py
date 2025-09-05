@@ -83,8 +83,6 @@ class UncheckedResolveSchema(Schema):
     """미해결 항목 해결용 스키마"""
 
     unchecked_id = fields.Int(required=True)
-    resolved_by = fields.Str(required=True)
-    resolution_comment = fields.Str()
 
     @validates("unchecked_id")
     def validate_unchecked_id(self, value):

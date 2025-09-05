@@ -6,6 +6,7 @@ from .base import (
     ErrorSchema,
     DateFilterSchema,
     TaskStatusResponseSchema,
+    CombinedTaskStatusResponseSchema,
     NotificationQuerySchema,
     # 인스턴스
     response_schema,
@@ -14,6 +15,7 @@ from .base import (
     pagination_schema,
     date_filter_schema,
     task_status_response_schema,
+    combined_task_status_response_schema,
     notification_query_schema,
 )
 
@@ -155,6 +157,7 @@ __all__ = [
     "ErrorSchema",
     "DateFilterSchema",
     "TaskStatusResponseSchema", 
+    "CombinedTaskStatusResponseSchema",
     "NotificationQuerySchema",
     "response_schema",
     "paginated_response_schema",
@@ -162,6 +165,7 @@ __all__ = [
     "pagination_schema",
     "date_filter_schema",
     "task_status_response_schema",
+    "combined_task_status_response_schema",
     "notification_query_schema",
     
     # User schemas

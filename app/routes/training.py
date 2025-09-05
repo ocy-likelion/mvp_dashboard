@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, jsonify
 import logging
 
 from app.serializers import (
@@ -793,9 +793,7 @@ def resolve_unchecked_description():
         validated_data = UncheckedSerializer.deserialize_unchecked_resolve(request.json)
         UncheckedService.resolve_unchecked_description(validated_data)
 
-        return json_response(
-            data=None, message="미체크 항목이 해결되었습니다.", status_code=200
-        )
+        return jsonify({"success": True, "message": "미체크 항목이 해결되었습니다."}), 200
     except Exception as e:
         logger.error("Error resolving unchecked description", exc_info=True)
         return error_json_response("미체크 항목 해결 실패", status_code=500)
