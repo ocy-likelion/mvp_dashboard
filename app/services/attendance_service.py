@@ -54,21 +54,21 @@ class AttendanceService(BaseService):
 
         with db_session() as session:
             # 중복 출석 기록 확인
-            existing_attendance = (
-                session.query(Attendance)
-                .filter(
-                    Attendance.date == attendance_date,
-                    # Attendance.instructor == attendance_data.get("instructor"),
-                    # 보조 강사가 여러 명으로 추가되는 경우에, instructor 가 2로 고정되어 추가 요청이 발생하는 문제
-                    # 프론트엔드에서 보조 강사 추가 시 instructor 코드를 증가 시키도록 수정한 뒤 이 코드 주석 해제
-                    Attendance.training_course
-                    == attendance_data.get("training_course"),
-                )
-                .first()
-            )
+            # existing_attendance = (
+            #     session.query(Attendance)
+            #     .filter(
+            #         Attendance.date == attendance_date,
+            #         # Attendance.instructor == attendance_data.get("instructor"),
+            #         # 보조 강사가 여러 명으로 추가되는 경우에, instructor 가 2로 고정되어 추가 요청이 발생하는 문제
+            #         # 프론트엔드에서 보조 강사 추가 시 instructor 코드를 증가 시키도록 수정한 뒤 이 코드 주석 해제
+            #         Attendance.training_course
+            #         == attendance_data.get("training_course"),
+            #     )
+            #     .first()
+            # )
 
-            if existing_attendance:
-                raise ValueError("해당 날짜에 이미 출석 기록이 존재합니다.")
+            # if existing_attendance:
+            #     raise ValueError("해당 날짜에 이미 출석 기록이 존재합니다.")
 
             attendance = Attendance(
                 date=attendance_date,
